@@ -1,0 +1,12 @@
+[package]
+name = "crush"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.103"
+bytes = "1.12.1"
+rustyline = "18.0.1"
+shlex = "2.0.1"
+thiserror = "2.0.18"
+which = "8.0.4"
