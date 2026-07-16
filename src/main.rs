@@ -1,6 +1,7 @@
 mod shell;
 mod history;
 mod completion;
+mod help;
 
 #[allow(unused_imports)]
 use std::env;
@@ -79,22 +80,39 @@ fn main() {
     rl.set_helper(Some(helper));
 
     // ── Keybindings ───────────────────────────────────────────────────────────
-    // Ctrl+D  → exit shell
+    //
+    // Ghost text (suggestion dim):
+    //   → muncul otomatis dari Hinter: history hint atau top completion candidate
+    //   → terima ghost text dengan: Right-arrow / End / Shift+Tab
+    //
+    // Tab behaviour (CompletionType::Circular):
+    //   • 1x Tab → isi common prefix (tipe 5) atau top match langsung
+    //   • 2x Tab → tampilkan semua kandidat sebagai daftar + cycle
+    //   • Alt+l  → paksa tampilkan daftar semua kandidat
+    //
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Ctrl+D → exit shell
     rl.bind_sequence(
         KeyEvent(Char('d'), Modifiers::CTRL),
         Cmd::Interrupt,
     );
 
-    // Tab (default rustyline = Complete) → complete satu kata (Circular)
-    // Shift+Tab → tampilkan semua kandidat (List)
+    // Shift+Tab → terima ghost text (accept top suggestion)
     rl.bind_sequence(
         KeyEvent(BackTab, Modifiers::NONE),
         Cmd::CompleteHint,
     );
 
-    // Arrow keys: Up/Down sudah di-handle rustyline untuk history navigation.
-    // Left/Right untuk navigasi karakter juga sudah built-in.
-    // Kita tambahkan Ctrl+P / Ctrl+N sebagai alias Up/Down history.
+    // Alt+l → paksa tampilkan semua completion list
+    // (pada Circular mode, Cmd::Complete pada Tab ke-2 sudah memunculkan list;
+    //  binding ini memungkinkan akses list secara eksplisit tanpa Tab pertama)
+    rl.bind_sequence(
+        KeyEvent(Char('l'), Modifiers::ALT),
+        Cmd::Complete,
+    );
+
+    // Ctrl+P / Ctrl+N → alias Up/Down history
     rl.bind_sequence(
         KeyEvent(Char('p'), Modifiers::CTRL),
         Cmd::PreviousHistory,
@@ -191,6 +209,10 @@ fn run_command_line(
 
     // ── Dispatch ──────────────────────────────────────────────────────────────
     match clean_args_refs.as_slice() {
+        // Help
+        ["help"] => help::print_help(None),
+        ["help", topic] => help::print_help(Some(topic)),
+
         // Keluar
         ["exit"] | ["exit", ..] => {
             history::save_history(rl);
@@ -241,7 +263,7 @@ fn run_command_line(
         ["cd", ..] => eprintln!("cd: too many arguments"),
 
         // Type
-        ["type", args @ ("echo" | "exit" | "type" | "pwd" | "history" | "clear")] => {
+        ["type", args @ ("echo" | "exit" | "type" | "pwd" | "history" | "clear" | "help" | "export" | "unset" | "source")] => {
             println!("{} is a shell builtin", args);
         }
         ["type", arg] if which(arg).is_ok() => {

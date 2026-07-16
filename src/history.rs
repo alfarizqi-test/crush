@@ -29,7 +29,7 @@ pub fn build_rl_config() -> rustyline::Config {
         .history_ignore_space(true)                               // Jangan simpan perintah berawali spasi
         .history_ignore_dups(true)                                // Jangan simpan perintah duplikat berturut-turut
         .expect("invalid history_ignore_dups config")
-        .completion_type(rustyline::CompletionType::List)         // Tampilkan daftar suggestion
+        .completion_type(rustyline::CompletionType::Circular)    // Tab isi top match, Tab lagi = cycle
         .edit_mode(rustyline::EditMode::Emacs)                    // Mode standar (Ctrl+A/E, dll)
         .build()
 }
