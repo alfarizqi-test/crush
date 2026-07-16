@@ -107,6 +107,8 @@ fn main() {
     // Muat history dari disk
     history::load_history(&mut rl);
 
+    println!("\nWelcome to Crush!\nType 'exit' or press Ctrl+D to quit.\nType 'help' for a list of commands.\n");
+
     // ── REPL ──────────────────────────────────────────────────────────────────
     loop {
         let prompt = build_prompt();
