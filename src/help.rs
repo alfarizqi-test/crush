@@ -81,6 +81,7 @@ fn print_builtins() {
     row2("export",  "NAME[=value]",       "Set environment variable");
     row2("unset",   "NAME",               "Unset environment variable");
     row2("source",  "<file.sh>",          "Execute script in current shell");
+    row2("jobs",    "[%N ...]",           "List background jobs (optional: specific job IDs)");
     row2("help",    "[topic]",            "Show this help (topics: builtins bindings config)");
 
     println!();
@@ -90,17 +91,36 @@ fn print_builtins() {
     row("cmd 2> file",  "Redirect stderr to file");
     row("cmd 2>> file", "Redirect stderr to file (append)");
     row("cmd 1> file",  "Explicit stdout redirect");
+
+    println!();
+    println!("    {}Background jobs:{}", WHITE, RST);
+    row("cmd &",          "Run command in background");
+    row("jobs",           "List all background jobs");
+    row("jobs %1 %2",     "Show specific background jobs");
+    println!("    {}  Jobs are reaped automatically before each prompt.{}", DIM, RST);
+
+    println!();
+    println!("    {}Pipelines:{}", WHITE, RST);
+    row("cmd1 | cmd2",         "Pipe stdout of cmd1 to stdin of cmd2");
+    row("echo hi | wc -c",    "Pipeline with builtin");
+    row("cmd1 | cmd2 | cmd3", "Multi-command pipeline");
+
+    println!();
+    println!("    {}Conditional execution:{}", WHITE, RST);
+    row("cmd1 && cmd2",  "Run cmd2 only if cmd1 succeeds (exit 0)");
+    row("cmd1 || cmd2",  "Run cmd2 only if cmd1 fails (exit ≠ 0)");
 }
 
 fn print_bindings() {
     header("KEYBOARD BINDINGS");
 
     println!("    {}Completion:{}", WHITE, RST);
-    row("Tab",          "Complete / cycle through candidates (Circular)");
-    row("Tab  (×2)",    "Show full candidate list + cycle");
-    row("Shift+Tab",    "Accept ghost text suggestion");
-    row("Alt+l",        "Force show all candidates as list");
-    row("→  /  End",    "Accept ghost text (history or top completion)");
+    row("Tab",           "Complete / cycle (Circular mode)");
+    row("Tab  (×2)",     "Show full candidate list + cycle");
+    row("Ctrl+Space",    "Force show all candidates as list");
+    row("Alt+l",         "Force show all candidates as list");
+    row("Shift+Tab",     "Accept ghost text suggestion");
+    row("→  /  End",     "Accept ghost text (history or top completion)");
 
     println!();
     println!("    {}Navigation:{}", WHITE, RST);
