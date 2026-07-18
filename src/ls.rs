@@ -137,7 +137,7 @@ fn dir_icon(name: &str) -> &'static str {
         | "out"                      => "\u{e5fe} ", // nf-seti-folder (build)
         "node_modules"               => "\u{e74e} ", // nf-dev-javascript
         "public" | "static"          => "\u{f0c2} ", // nf-fa-cloud
-        "assets" | "images" | "img" => "\u{f03e} ", // nf-fa-picture_o
+        "assets" | "images" | "img"  => "\u{f03e} ", // nf-fa-picture_o
         "docs" | "doc"               => "\u{f02d} ", // nf-fa-book
         "test" | "tests" | "spec"    => "\u{f0ae} ", // nf-fa-tasks
         "config" | ".config"         => "\u{e615} ", // nf-seti-config
@@ -185,6 +185,7 @@ fn file_icon_fallback(name: &str, meta: &Metadata) -> &'static str {
         ".bashrc" | ".bash_profile" | ".profile"=> "\u{e691} ", // nf-dev-bash
         ".zshrc" | ".zshenv"                    => "\u{e615} ", // nf-seti-config
         ".vimrc" | "init.vim"                   => "\u{e62b} ", // nf-dev-vim
+        "PKGBUILD"                              => "\u{f303} ", // nf-md-arch
         _                                       => "\u{f15b} ", // nf-fa-file (default)
     }
 }
