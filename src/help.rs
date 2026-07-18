@@ -82,6 +82,7 @@ fn print_builtins() {
     row2("unset",   "NAME",               "Unset environment variable");
     row2("source",  "<file.sh>",          "Execute script in current shell");
     row2("jobs",    "[%N ...]",           "List background jobs (optional: specific job IDs)");
+    row2("ls",      "[-lahrtd1] [path]",  "List directory with icons (Nerd Font, eza-style)");
     row2("help",    "[topic]",            "Show this help (topics: builtins bindings config)");
 
     println!();

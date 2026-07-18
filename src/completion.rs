@@ -32,7 +32,7 @@ use std::path::{Path, PathBuf};
 
 const BUILTINS: &[&str] = &[
     "echo", "cd", "pwd", "type", "exit", "history", "clear",
-    "export", "unset", "source", "jobs", "help",
+    "export", "unset", "source", "jobs", "help", "ls",
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

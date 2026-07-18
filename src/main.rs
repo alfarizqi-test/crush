@@ -4,6 +4,7 @@ mod completion;
 mod help;
 mod jobs;
 mod executor;
+mod ls;
 
 use std::env;
 

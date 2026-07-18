@@ -455,7 +455,7 @@ fn execute_segment(
         }
         "type" => {
             let builtins = ["echo","cd","pwd","type","exit","history",
-                            "clear","help","export","unset","source","jobs"];
+                            "clear","help","export","unset","source","jobs","ls"];
             for &arg in &rest {
                 if builtins.contains(&arg) {
                     println!("{} is a shell builtin", arg);
@@ -498,6 +498,9 @@ fn execute_segment(
                 }
             }
             return 0;
+        }
+        "ls" => {
+            return crate::ls::run(&rest);
         }
         _ => {} // lanjut ke external command
     }
