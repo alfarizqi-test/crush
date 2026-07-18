@@ -33,149 +33,159 @@ const MAGENTA:&str = "\x1b[0;35m";   // archive/compressed
 const LBLUE:  &str = "\x1b[0;34m";   // media
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Icon map — Nerd Font
+// Icon map — Nerd Font v3 (codepoints U+E000–U+F8FF, BMP Private Use Area)
+//
+// Referensi: https://www.nerdfonts.com/cheat-sheet
+//   nf-dev-*    E600–E6FF   (DevIcons)
+//   nf-fa-*     E000–E0FF, F000–F2FF  (Font Awesome)
+//   nf-seti-*   E5FA–E62A  (Seti-UI)
+//   nf-cod-*    EA60–EBEB  (Codicons)
+//   nf-md-*     F0000+     (Material — TIDAK dipakai, di luar BMP)
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn icon_for(name: &str, meta: &Metadata, is_link: bool) -> &'static str {
-    if is_link       { return "󱅷 "; }
+    if is_link       { return "\u{f0c1} "; }  // nf-fa-link
     if meta.is_dir() { return dir_icon(name); }
 
     let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
     match ext.as_str() {
         // Rust
-        "rs"                          => " ",
+        "rs"                          => "\u{e7a8} ", // nf-dev-rust
         // Web
-        "html" | "htm"                => " ",
-        "css" | "scss" | "sass"       => " ",
-        "js" | "mjs" | "cjs"         => " ",
-        "ts"                          => " ",
-        "jsx" | "tsx"                 => " ",
-        "vue"                         => " ",
-        "svelte"                      => " ",
+        "html" | "htm"                => "\u{e736} ", // nf-dev-html5
+        "css"                         => "\u{e749} ", // nf-dev-css3
+        "scss" | "sass"               => "\u{e603} ", // nf-dev-sass
+        "js" | "mjs" | "cjs"         => "\u{e74e} ", // nf-dev-javascript
+        "ts"                          => "\u{e628} ", // nf-dev-typescript
+        "jsx" | "tsx"                 => "\u{e7ba} ", // nf-dev-react
+        "vue"                         => "\u{e6a0} ", // nf-dev-vue
+        "svelte"                      => "\u{e697} ", // nf-dev-svelte (fallback file)
         // Config / Data
-        "json" | "jsonc"              => " ",
-        "yaml" | "yml"                => " ",
-        "toml"                        => " ",
-        "xml"                         => "󰗀 ",
-        "csv"                         => " ",
-        "env"                         => " ",
-        "ini" | "cfg" | "conf"        => " ",
+        "json" | "jsonc"              => "\u{e60b} ", // nf-seti-json
+        "yaml" | "yml"                => "\u{e601} ", // nf-seti-yaml
+        "toml"                        => "\u{e615} ", // nf-seti-config (settings)
+        "xml"                         => "\u{e619} ", // nf-seti-xml
+        "csv"                         => "\u{f1c3} ", // nf-fa-file_excel_o
+        "env"                         => "\u{f462} ", // nf-fa-shield (env vars)
+        "ini" | "cfg" | "conf"        => "\u{e615} ", // nf-seti-config
         // Docs
-        "md" | "mdx"                  => " ",
-        "txt"                         => " ",
-        "pdf"                         => " ",
-        "doc" | "docx"                => "󱎒 ",
-        "xls" | "xlsx"                => "󱎗 ",
-        "ppt" | "pptx"                => "󱎐 ",
+        "md" | "mdx"                  => "\u{e609} ", // nf-seti-markdown
+        "txt"                         => "\u{f15c} ", // nf-fa-file_text
+        "pdf"                         => "\u{f1c1} ", // nf-fa-file_pdf_o
+        "doc" | "docx"                => "\u{f1c2} ", // nf-fa-file_word_o
+        "xls" | "xlsx"                => "\u{f1c3} ", // nf-fa-file_excel_o
+        "ppt" | "pptx"                => "\u{f1c4} ", // nf-fa-file_powerpoint_o
         // Archives
         "zip" | "tar" | "gz" | "bz2"
-        | "xz" | "zst" | "7z" | "rar"=> " ",
-        "deb" | "rpm"                 => " ",
-        "pkg"                         => " ",
+        | "xz" | "zst" | "7z" | "rar"=> "\u{f1c6} ", // nf-fa-file_archive_o
+        "deb"                         => "\u{e77d} ", // nf-dev-debian
+        "rpm"                         => "\u{e7bb} ", // nf-dev-redhat
+        "pkg"                         => "\u{f468} ", // nf-fa-cube
         // Images
         "png" | "jpg" | "jpeg" | "gif"
-        | "webp" | "bmp" | "ico"      => " ",
-        "svg"                         => "󰜡 ",
+        | "webp" | "bmp" | "ico"      => "\u{f1c5} ", // nf-fa-file_image_o
+        "svg"                         => "\u{e698} ", // nf-dev-svg
         // Audio / Video
         "mp3" | "flac" | "ogg" | "wav"
-        | "aac" | "opus"              => " ",
+        | "aac" | "opus"              => "\u{f001} ", // nf-fa-music
         "mp4" | "mkv" | "avi" | "mov"
-        | "webm" | "flv"              => " ",
+        | "webm" | "flv"              => "\u{f03d} ", // nf-fa-film
         // Code (lain)
-        "py" | "pyw"                  => " ",
-        "go"                          => " ",
-        "java"                        => " ",
-        "c" | "h"                     => " ",
-        "cpp" | "cc" | "cxx" | "hpp" => " ",
-        "cs"                          => "󰌛 ",
-        "rb"                          => " ",
-        "php"                         => " ",
-        "lua"                         => " ",
-        "sh" | "bash" | "zsh" | "fish"=> " ",
-        "ps1"                         => "󰨊 ",
-        "vim" | "nvim"                => " ",
-        "el" | "elc"                  => " ",
-        "hs"                          => " ",
-        "r"                           => " ",
-        "swift"                       => " ",
-        "kt" | "kts"                  => " ",
-        "dart"                        => " ",
-        "ex" | "exs"                  => " ",
-        "nix"                         => " ",
+        "py" | "pyw"                  => "\u{e606} ", // nf-dev-python
+        "go"                          => "\u{e626} ", // nf-dev-go
+        "java"                        => "\u{e738} ", // nf-dev-java
+        "c" | "h"                     => "\u{e61e} ", // nf-dev-c
+        "cpp" | "cc" | "cxx" | "hpp" => "\u{e61d} ", // nf-dev-cplusplus
+        "cs"                          => "\u{e648} ", // nf-dev-csharp
+        "rb"                          => "\u{e739} ", // nf-dev-ruby
+        "php"                         => "\u{e73d} ", // nf-dev-php
+        "lua"                         => "\u{e620} ", // nf-dev-lua
+        "sh" | "bash"                 => "\u{e691} ", // nf-dev-bash (terminal)
+        "zsh" | "fish"                => "\u{e615} ", // nf-seti-config
+        "ps1"                         => "\u{e6a2} ", // nf-dev-windows (powershell)
+        "vim" | "nvim"                => "\u{e62b} ", // nf-dev-vim
+        "el" | "elc"                  => "\u{e616} ", // nf-seti-elisp
+        "hs"                          => "\u{e777} ", // nf-dev-haskell
+        "r"                           => "\u{e68a} ", // nf-dev-r
+        "swift"                       => "\u{e755} ", // nf-dev-swift
+        "kt" | "kts"                  => "\u{e634} ", // nf-dev-kotlin
+        "dart"                        => "\u{e798} ", // nf-dev-dart
+        "ex" | "exs"                  => "\u{e62d} ", // nf-dev-elixir
+        "nix"                         => "\u{e7a5} ", // nf-dev-nixos
         // Database
-        "sql" | "db" | "sqlite"       => " ",
+        "sql"                         => "\u{e706} ", // nf-dev-database
+        "db" | "sqlite"               => "\u{e706} ", // nf-dev-database
         // Docker / DevOps
-        "dockerfile" | "containerfile"=> " ",
+        "dockerfile" | "containerfile"=> "\u{e650} ", // nf-dev-docker (whale)
         // Font
-        "ttf" | "otf" | "woff" | "woff2" => " ",
+        "ttf" | "otf" | "woff" | "woff2" => "\u{f031} ", // nf-fa-font
         // Binary / object
-        "o" | "so" | "a" | "dylib"   => " ",
-        "wasm"                        => " ",
-        // Lock files
-        "lock"                        => " ",
-        // Executables & scripts (tidak punya ext tapi executable — ditangani di bawah)
+        "o" | "so" | "a" | "dylib"   => "\u{f17c} ", // nf-fa-linux
+        "wasm"                        => "\u{e738} ", // nf-dev-java (reuse)
+        // Lock
+        "lock"                        => "\u{f023} ", // nf-fa-lock
         _ => file_icon_fallback(name, meta),
     }
 }
 
 fn dir_icon(name: &str) -> &'static str {
     match name {
-        ".git"                       => " ",
-        ".github"                    => " ",
-        "src" | "source"             => " ",
+        ".git"                       => "\u{e702} ", // nf-dev-git
+        ".github"                    => "\u{e65b} ", // nf-dev-github_badge
+        "src" | "source"             => "\u{e5fe} ", // nf-seti-folder_src
         "target" | "build" | "dist"
-        | "out"                      => " ",
-        "node_modules"               => " ",
-        "public" | "static"          => " ",
-        "assets" | "images" | "img" => " ",
-        "docs" | "doc"               => " ",
-        "test" | "tests" | "spec"    => " ",
-        "config" | ".config"         => " ",
-        "bin"                        => " ",
-        "lib"                        => " ",
-        "scripts" | "script"         => " ",
-        "tmp" | "temp" | "cache"     => " ",
-        "logs" | "log"               => " ",
-        "backup"                     => " ",
-        "downloads" | "Download"     => " ",
-        "Desktop"                    => " ",
-        "Documents" | "document"     => " ",
-        "Music"                      => " ",
-        "Pictures"                   => " ",
-        "Videos"                     => " ",
-        "home"                       => " ",
-        "etc"                        => " ",
-        "usr"                        => " ",
-        "var"                        => " ",
-        "proc"                       => " ",
-        "dev"                        => " ",
-        "mnt" | "media"              => " ",
-        _                            => " ",
+        | "out"                      => "\u{e5fe} ", // nf-seti-folder (build)
+        "node_modules"               => "\u{e74e} ", // nf-dev-javascript
+        "public" | "static"          => "\u{f0c2} ", // nf-fa-cloud
+        "assets" | "images" | "img" => "\u{f03e} ", // nf-fa-picture_o
+        "docs" | "doc"               => "\u{f02d} ", // nf-fa-book
+        "test" | "tests" | "spec"    => "\u{f0ae} ", // nf-fa-tasks
+        "config" | ".config"         => "\u{e615} ", // nf-seti-config
+        "bin"                        => "\u{e5fc} ", // nf-seti-folder_bin
+        "lib"                        => "\u{f121} ", // nf-fa-code
+        "scripts" | "script"         => "\u{f489} ", // nf-fa-terminal
+        "tmp" | "temp" | "cache"     => "\u{f07b} ", // nf-fa-folder
+        "logs" | "log"               => "\u{f18d} ", // nf-fa-file_text_o
+        "backup"                     => "\u{f0c7} ", // nf-fa-floppy_o
+        "downloads" | "Download"     => "\u{f019} ", // nf-fa-download
+        "Desktop"                    => "\u{f108} ", // nf-fa-desktop
+        "Documents" | "document"     => "\u{f02d} ", // nf-fa-book
+        "Music"                      => "\u{f001} ", // nf-fa-music
+        "Pictures"                   => "\u{f03e} ", // nf-fa-picture_o
+        "Videos"                     => "\u{f03d} ", // nf-fa-film
+        "home"                       => "\u{f015} ", // nf-fa-home
+        "etc"                        => "\u{f013} ", // nf-fa-cog
+        "usr"                        => "\u{f007} ", // nf-fa-user
+        "var"                        => "\u{f1b2} ", // nf-fa-cube
+        "proc"                       => "\u{f085} ", // nf-fa-cogs
+        "dev"                        => "\u{e601} ", // nf-seti-default (devices)
+        "mnt" | "media"              => "\u{f0a0} ", // nf-fa-hdd_o
+        _                            => "\u{f07b} ", // nf-fa-folder (default)
     }
 }
 
 fn file_icon_fallback(name: &str, meta: &Metadata) -> &'static str {
     // Executable tanpa ekstensi
     if meta.permissions().mode() & 0o111 != 0 && !meta.is_dir() {
-        return " ";
+        return "\u{f489} "; // nf-fa-terminal
     }
-    // Nama khusus
+    // Nama file khusus
     match name {
-        "Makefile" | "makefile" | "GNUmakefile" => " ",
-        "Dockerfile" | "Containerfile"          => " ",
-        "docker-compose.yml" | "compose.yml"    => " ",
-        ".gitignore" | ".gitattributes"         => " ",
-        ".editorconfig"                         => " ",
-        "LICENSE" | "licence"                   => " ",
-        "README" | "readme"                     => " ",
-        "Cargo.toml" | "Cargo.lock"             => " ",
-        "package.json" | "package-lock.json"    => " ",
-        "go.mod" | "go.sum"                     => " ",
-        "pyproject.toml" | "setup.py"           => " ",
-        ".bashrc" | ".bash_profile" | ".profile"=> " ",
-        ".zshrc" | ".zshenv"                    => " ",
-        ".vimrc" | "init.vim"                   => " ",
-        _                                       => " ",
+        "Makefile" | "makefile" | "GNUmakefile" => "\u{f013} ", // nf-fa-cog
+        "Dockerfile" | "Containerfile"          => "\u{e650} ", // nf-dev-docker
+        "docker-compose.yml" | "compose.yml"    => "\u{e650} ", // nf-dev-docker
+        ".gitignore" | ".gitattributes"         => "\u{e702} ", // nf-dev-git
+        ".editorconfig"                         => "\u{e652} ", // nf-dev-aptana
+        "LICENSE" | "LICENCE"                   => "\u{f0e3} ", // nf-fa-legal
+        "README" | "readme"                     => "\u{f48a} ", // nf-fa-book (README)
+        "Cargo.toml" | "Cargo.lock"             => "\u{e7a8} ", // nf-dev-rust
+        "package.json" | "package-lock.json"    => "\u{e74e} ", // nf-dev-javascript
+        "go.mod" | "go.sum"                     => "\u{e626} ", // nf-dev-go
+        "pyproject.toml" | "setup.py"           => "\u{e606} ", // nf-dev-python
+        ".bashrc" | ".bash_profile" | ".profile"=> "\u{e691} ", // nf-dev-bash
+        ".zshrc" | ".zshenv"                    => "\u{e615} ", // nf-seti-config
+        ".vimrc" | "init.vim"                   => "\u{e62b} ", // nf-dev-vim
+        _                                       => "\u{f15b} ", // nf-fa-file (default)
     }
 }
 
