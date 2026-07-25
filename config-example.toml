@@ -1,0 +1,179 @@
+# ==========================================
+# MAIN SHELL CONFIG
+# ==========================================
+
+[shell]
+show_greeting = true
+add_newline_before_prompt = false
+syntax_highlighting = true
+
+[startup]
+commands = [
+    # "cat ~/.local/state/quickshell/user/generated/terminal/sequences.txt",
+    "clear",
+    "fastfetch"
+]
+
+[env]
+EDITOR = "nvim"
+VISUAL = "nvim"
+LANG = "en_US.UTF-8"
+PATH = [
+    "~/.cargo/bin",
+    "~/.local/bin",
+    "~/Templates/TUI/crush/target/release"
+]
+
+[aliases]
+pamcan = "pacman"
+
+clear = "printf '\\033[2J\\033[3J\\033[1;1H'"
+celar = "printf '\\033[2J\\033[3J\\033[1;1H'"
+claer = "printf '\\033[2J\\033[3J\\033[1;1H'"
+
+ssh = "kitten ssh"
+
+# Quick Aliases
+a = "antigravity ."
+b = "btop"
+c = "code ."
+d = "dolphin ."
+f = "clear && fastfetch"
+g = "grep -Rin"
+l = "clear"
+m = "unimatrix -c magenta -u \"♩♪♫♬♭♮♯\" -s 96"
+n = "nvim"
+q = "qs -c ii"
+z = "zellij --layout dev"
+
+[bindings]
+"Ctrl+L" = "clear_screen"
+"Ctrl+R" = "search_history"
+"Ctrl+D" = "exit_shell"
+
+# execute command y for yazi wrapper
+"Ctrl+F" = "execute: y"
+
+[completion]
+case_sensitive = false
+fuzzy_search = true
+inline_suggestions = true
+
+[dir_aliases]
+# work if user exec cd ~crush or ~crush/src, nvim ~crush/src/main.rs, and other command
+crush = "~/Templates/TUI/crush"
+cfg = "~/.config"
+dl = "~/Downloads"
+
+[hooks]
+# Auto after command run
+on_cd = "ls"
+on_clear = "fastfetch"
+
+# Auto before command run
+pre_command = ""
+
+[history]
+max_entries = 10000
+ignore_space = true
+ignore_dups = true
+timestamp_format = "%Y-%m-%d %H:%M:%S"
+
+[theme]
+# for valid command (executeable/builtin)
+command_valid = "green"
+# for incalid command (typo)
+command_invalid = "red"
+# for string or path
+string = "yellow"
+
+# ==========================================
+# WRAPPER CONFIG
+# ==========================================
+
+[functions.y]
+description = "Yazi wrapper to change directory on exit"
+body = """
+let tmp = $(mktemp -t "yazi-cwd.XXXXXX")
+yazi $args --cwd-file="$tmp"
+let cwd = $(cat "$tmp")
+if [ "$cwd" != "$PWD" ]
+    cd "$cwd"
+end
+rm -f -- "$tmp"
+"""
+
+# ==========================================
+# CRUSH BUILT-IN PROMPT ENGINE (Starship-like)
+# ==========================================
+
+[prompt]
+# Format utama penyusun prompt
+format = """
+$cmd_duration $directory$git_branch
+  $character"""
+
+[prompt.character]
+success_symbol = "[ ](bold fg:243)"
+error_symbol = "[ ](bold fg:244)"
+
+[prompt.directory]
+home_symbol = " "
+read_only = "  "
+style = "bg:255 fg:240"
+truncation_length = 2
+truncation_symbol = ".../"
+format = "[](bold fg:255)[󰉋 → $path]($style)[](bold fg:255)"
+
+[prompt.directory.substitutions]
+"Desktop" = "  "
+"Documents" = "  "
+"Downloads" = "  "
+"Music" = " 󰎈 "
+"Pictures" = "  "
+"Videos" = "  "
+"GitHub" = " 󰊤 "
+
+[prompt.cmd_duration]
+min_time = 0
+format = "[](bold fg:252)[󰪢 $duration](bold bg:252 fg:235)[](bold fg:252)"
+
+[prompt.git_branch]
+style = "bg: 252"
+symbol = "󰘬"
+truncation_length = 12
+truncation_symbol = ""
+format = " 󰜥 [](bold fg:252)[$symbol $branch(:$remote_branch)](fg:235 bg:252)[ ](bold fg:252)"
+
+[prompt.git_commit]
+commit_hash_length = 4
+tag_symbol = " "
+
+[prompt.git_state]
+format = "[\\($state( $progress_current of $progress_total)\\)]($style) "
+cherry_pick = "[🍒 PICKING](bold red)"
+
+[prompt.git_status]
+conflicted = " 🏳 "
+ahead = " 🏎💨 "
+behind = " 😰 "
+diverged = " 😵 "
+untracked = " 🤷 ‍"
+stashed = " 📦 "
+modified = " 📝 "
+staged = "[++\\($count\\)](green)"
+renamed = " ✍️ "
+deleted = " 🗑 "
+
+[prompt.hostname]
+ssh_only = false
+format = "[•$hostname](bg:252 bold fg:235)[](bold fg:252)"
+trim_at = ".companyname.com"
+disabled = false
+
+[prompt.username]
+style_user = "bold bg:252 fg:235"
+style_root = "red bold"
+format = "[](bold fg:252)[$user]($style)"
+disabled = false
+show_always = true

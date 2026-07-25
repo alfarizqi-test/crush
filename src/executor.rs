@@ -16,6 +16,7 @@ use std::process::{Child, Command, Stdio};
 use which::which;
 
 use crate::jobs::SharedJobTable;
+use crate::config::ShellConfig;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tipe data internal
@@ -228,12 +229,13 @@ pub fn expand_tilde(path: &str) -> String {
 // ─────────────────────────────────────────────────────────────────────────────
 
 pub struct ExecContext<'a> {
-    pub jobs:   &'a SharedJobTable,
-    pub rl:     &'a mut rustyline::Editor<
-                    crate::completion::CrushCompleter,
-                    rustyline::history::FileHistory,
-                >,
-    pub raw_input: &'a str, // teks asli baris input (untuk job command label)
+    pub jobs:      &'a SharedJobTable,
+    pub rl:        &'a mut rustyline::Editor<
+                       crate::completion::CrushCompleter,
+                       rustyline::history::FileHistory,
+                   >,
+    pub raw_input: &'a str,
+    pub config:    &'a ShellConfig,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -410,6 +412,11 @@ fn execute_segment(
         "clear" => {
             print!("\x1b[2J\x1b[H");
             io::stdout().flush().ok();
+            // Hook: on_clear
+            let hook = ctx.config.hooks.on_clear.clone();
+            if !hook.is_empty() {
+                run_hook(&hook, ctx);
+            }
             return 0;
         }
         "echo" => {
@@ -439,17 +446,29 @@ fn execute_segment(
             return 0;
         }
         "cd" => {
-            let target = if rest.is_empty() {
+            let raw_target = if rest.is_empty() {
                 env::var("HOME").unwrap_or_else(|_| "/".to_string())
             } else if rest.len() > 1 {
                 eprintln!("cd: too many arguments");
                 return 1;
             } else {
-                expand_tilde(rest[0])
+                rest[0].to_string()
             };
+
+            // Resolve dir_alias DULU (sebelum expand_tilde), agar ~crush tetap ~name
+            let after_alias = ctx.config.resolve_dir_alias(&raw_target);
+            // Kemudian baru expand_tilde
+            let target = expand_tilde(&after_alias);
+
             if let Err(_) = env::set_current_dir(Path::new(&target)) {
-                eprintln!("cd: {}: No such file or directory", rest[0]);
+                eprintln!("cd: {}: No such file or directory", raw_target);
                 return 1;
+            }
+
+            // Hook: on_cd
+            let hook = ctx.config.hooks.on_cd.clone();
+            if !hook.is_empty() {
+                run_hook(&hook, ctx);
             }
             return 0;
         }
@@ -582,4 +601,26 @@ fn spawn_process(
     }
 
     proc.spawn()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hook runner
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Jalankan satu string hook (on_cd, on_clear, pre_command) di dalam context saat ini.
+/// Hook adalah string perintah biasa yang di-tokenize dan dieksekusi.
+pub fn run_hook(hook: &str, ctx: &mut ExecContext<'_>) {
+    let hook = hook.trim();
+    if hook.is_empty() { return; }
+
+    let tokens_raw = match shlex::split(hook) {
+        Some(t) => t,
+        None    => return,
+    };
+    let tokens_owned = tokenize_operators(tokens_raw);
+    let tokens: Vec<&str> = tokens_owned.iter().map(|s| s.as_str()).collect();
+    let units = parse_input(&tokens);
+    if !units.is_empty() {
+        execute_line(ctx, units);
+    }
 }

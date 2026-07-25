@@ -25,6 +25,8 @@ use rustyline::{Context, Helper};
 use std::borrow::Cow;
 use std::env;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
+use crate::config::ShellConfig;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Konstanta
@@ -40,12 +42,61 @@ const BUILTINS: &[&str] = &[
 // ─────────────────────────────────────────────────────────────────────────────
 
 pub struct CrushCompleter {
-    hinter: HistoryHinter,
+    hinter:  HistoryHinter,
+    /// Shared config — read saat highlight/complete
+    config:  Arc<RwLock<ShellConfig>>,
 }
 
 impl CrushCompleter {
-    pub fn new() -> Self {
-        Self { hinter: HistoryHinter::new() }
+    pub fn new(config: Arc<RwLock<ShellConfig>>) -> Self {
+        Self { hinter: HistoryHinter::new(), config }
+    }
+
+    /// Helper: baca case_sensitive dari config
+    fn case_sensitive(&self) -> bool {
+        self.config.read()
+            .map(|c| c.completion.case_sensitive)
+            .unwrap_or(false)
+    }
+
+    /// Helper: semua alias name dari config
+    fn alias_names(&self) -> Vec<String> {
+        self.config.read()
+            .map(|c| c.aliases.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Helper: dir_aliases dari config
+    fn dir_aliases(&self) -> Vec<(String, String)> {
+        self.config.read()
+            .map(|c| c.dir_aliases.iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect())
+            .unwrap_or_default()
+    }
+
+    /// Helper: warna valid command dari theme
+    fn color_valid(&self) -> String {
+        let color = self.config.read()
+            .map(|c| c.theme.command_valid.clone())
+            .unwrap_or_else(|_| "green".into());
+        ansi_color(&color, true)
+    }
+
+    /// Helper: warna invalid command dari theme
+    fn color_invalid(&self) -> String {
+        let color = self.config.read()
+            .map(|c| c.theme.command_invalid.clone())
+            .unwrap_or_else(|_| "red".into());
+        ansi_color(&color, true)
+    }
+
+    /// Helper: warna string/path dari theme
+    fn color_string(&self) -> String {
+        let color = self.config.read()
+            .map(|c| c.theme.string.clone())
+            .unwrap_or_else(|_| "yellow".into());
+        ansi_color(&color, false)
     }
 
     // ── Core: parsing baris input ──────────────────────────────────────────
@@ -75,36 +126,35 @@ impl CrushCompleter {
 
     /// Kembalikan (word_start, Vec<Pair>) — dipakai oleh BOTH Completer dan Hinter.
     pub fn get_candidates(&self, line: &str, pos: usize) -> (usize, Vec<Pair>) {
+        let case_sensitive = self.case_sensitive();
         let (word_start, word, command, arg_position) = self.parse_line(line, pos);
 
         let candidates = if word.starts_with('$') {
-            // Env var: $HOME, $PATH, …
             complete_env_vars(word)
 
         } else if is_path_like(word) {
-            // Tipe 6 & 7: file/nested path
-            complete_paths(word)
+            complete_paths(word, case_sensitive)
 
         } else if arg_position == 0 {
-            // Tipe 3 & 8: command/executable completion
-            let pairs = complete_executables(word);
+            // command completion: builtin + aliases + executables
+            let aliases = self.alias_names();
+            let pairs = complete_executables(word, &aliases, case_sensitive);
             if pairs.is_empty() && !word.is_empty() {
-                // Tipe 2: did you mean?
-                fallback_typo(word)
+                fallback_typo(word, &aliases)
             } else {
                 pairs
             }
 
         } else {
-            // Tipe 1 & 9: argument completion berdasarkan command
-            let pairs = complete_args(command, word, arg_position);
+            // argument completion
+            let dir_aliases = self.dir_aliases();
+            let pairs = complete_args(command, word, arg_position, &dir_aliases, case_sensitive);
             if pairs.is_empty() {
-                // Fallback: file completion, lalu typo suggestion
-                let file_pairs = complete_paths(word);
+                let file_pairs = complete_paths(word, case_sensitive);
                 if !file_pairs.is_empty() {
                     file_pairs
                 } else if !word.is_empty() {
-                    fallback_typo(word)
+                    fallback_typo(word, &self.alias_names())
                 } else {
                     vec![]
                 }
@@ -166,17 +216,20 @@ fn levenshtein(a: &str, b: &str) -> usize {
     dp[m][n]
 }
 
-/// Hanya pakai BUILTINS untuk typo suggestion (cepat, tidak scan $PATH).
-fn fallback_typo(prefix: &str) -> Vec<Pair> {
+/// Typo suggestion dari BUILTINS + aliases
+fn fallback_typo(prefix: &str, aliases: &[String]) -> Vec<Pair> {
     if prefix.is_empty() || prefix.starts_with('/') || prefix.starts_with('$') {
         return vec![];
     }
-    let pool: Vec<&str> = BUILTINS.to_vec();
+    let mut pool: Vec<&str> = BUILTINS.to_vec();
+    let alias_refs: Vec<&str> = aliases.iter().map(|s| s.as_str()).collect();
+    pool.extend_from_slice(&alias_refs);
+
     if let Some(&best) = pool.iter().filter(|&&s| levenshtein(prefix, s) <= 2)
                                     .min_by_key(|&&s| levenshtein(prefix, s))
     {
         vec![Pair {
-            display: format!("did you mean: {}", best),
+            display:     format!("did you mean: {}", best),
             replacement: best.to_string(),
         }]
     } else {
@@ -222,19 +275,36 @@ fn inject_common_prefix(mut pairs: Vec<Pair>, prefix: &str) -> Vec<Pair> {
 // Tipe 3 & 8: Executable completion
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn complete_executables(prefix: &str) -> Vec<Pair> {
+fn complete_executables(prefix: &str, aliases: &[String], case_sensitive: bool) -> Vec<Pair> {
     let mut seen = std::collections::HashSet::new();
     let mut builtin_pairs: Vec<Pair> = Vec::new();
 
+    let matches = |name: &str| -> bool {
+        if case_sensitive { name.starts_with(prefix) }
+        else { name.to_lowercase().starts_with(&prefix.to_lowercase()) }
+    };
+
     // Builtin selalu muncul dulu
     for &b in BUILTINS {
-        if b.starts_with(prefix) && seen.insert(b.to_string()) {
+        if matches(b) && seen.insert(b.to_string()) {
             builtin_pairs.push(Pair {
-                display: format!("{} [builtin]", b),
+                display:     format!("{} [builtin]", b),
                 replacement: b.to_string(),
             });
         }
     }
+
+    // Aliases
+    let mut alias_pairs: Vec<Pair> = Vec::new();
+    for alias in aliases {
+        if matches(alias) && seen.insert(alias.clone()) {
+            alias_pairs.push(Pair {
+                display:     format!("{} [alias]", alias),
+                replacement: alias.clone(),
+            });
+        }
+    }
+    alias_pairs.sort_by(|a, b| a.replacement.cmp(&b.replacement));
 
     // Executable di $PATH
     let mut exe_pairs: Vec<Pair> = Vec::new();
@@ -247,7 +317,7 @@ fn complete_executables(prefix: &str) -> Vec<Pair> {
             .flatten()
             .filter_map(|entry| {
                 let name = entry.file_name().into_string().ok()?;
-                if !name.starts_with(prefix) || !seen.insert(name.clone()) { return None; }
+                if !matches(&name) || !seen.insert(name.clone()) { return None; }
                 let meta = entry.metadata().ok()?;
                 if meta.permissions().mode() & 0o111 == 0 { return None; }
                 Some(Pair { display: name.clone(), replacement: name })
@@ -257,9 +327,8 @@ fn complete_executables(prefix: &str) -> Vec<Pair> {
     }
 
     let mut all = builtin_pairs;
+    all.extend(alias_pairs);
     all.extend(exe_pairs);
-
-    // Tipe 5: inject common prefix sentinel
     inject_common_prefix(all, prefix)
 }
 
@@ -267,7 +336,7 @@ fn complete_executables(prefix: &str) -> Vec<Pair> {
 // Tipe 6 & 7: File + nested path completion
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn complete_paths(prefix: &str) -> Vec<Pair> {
+fn complete_paths(prefix: &str, case_sensitive: bool) -> Vec<Pair> {
     // Expand ~
     let expanded = if prefix.starts_with('~') {
         let home = env::var("HOME").unwrap_or_default();
@@ -278,18 +347,19 @@ fn complete_paths(prefix: &str) -> Vec<Pair> {
 
     let p = Path::new(&expanded);
 
-    // Tentukan direktori pencarian dan nama prefix yang dicari
+    let matches_name = |name: &str, pref: &str| -> bool {
+        if case_sensitive { name.starts_with(pref) }
+        else { name.to_lowercase().starts_with(&pref.to_lowercase()) }
+    };
+
     let (search_dir, name_prefix, dir_prefix): (PathBuf, String, String) =
         if expanded.ends_with('/') {
-            // "src/" → masuk ke dalam src/
             (p.to_path_buf(), String::new(), prefix.to_string())
         } else if let Some(parent) = p.parent().filter(|par| *par != Path::new("")) {
-            // "src/ma" → cari di src/, prefix = "ma"
             let fname = p.file_name().and_then(|f| f.to_str()).unwrap_or("").to_string();
             let slash_end = prefix.rfind('/').map(|i| i + 1).unwrap_or(0);
             (parent.to_path_buf(), fname, prefix[..slash_end].to_string())
         } else {
-            // "ma" → cari di CWD
             (PathBuf::from("."), expanded.clone(), String::new())
         };
 
@@ -300,7 +370,7 @@ fn complete_paths(prefix: &str) -> Vec<Pair> {
         .flatten()
         .filter_map(|entry| {
             let fname = entry.file_name().into_string().ok()?;
-            if !fname.starts_with(name_prefix.as_str()) { return None; }
+            if !matches_name(&fname, &name_prefix) { return None; }
             let is_dir = entry.metadata().map(|m| m.is_dir()).unwrap_or(false);
             let (display, replacement) = if is_dir {
                 (format!("{}/", fname), format!("{}{}/", dir_prefix, fname))
@@ -311,13 +381,10 @@ fn complete_paths(prefix: &str) -> Vec<Pair> {
         })
         .collect();
 
-    // Direktori dulu, lalu alfabetis
     pairs.sort_by(|a, b| {
         b.display.ends_with('/').cmp(&a.display.ends_with('/'))
             .then(a.display.cmp(&b.display))
     });
-
-    // Tipe 5: inject common prefix sentinel
     inject_common_prefix(pairs, prefix)
 }
 
@@ -342,16 +409,39 @@ fn complete_env_vars(prefix: &str) -> Vec<Pair> {
 // Tipe 1 & 9: Argument-aware completion per command
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn complete_args(cmd: &str, word: &str, _arg_n: usize) -> Vec<Pair> {
+fn complete_args(
+    cmd: &str,
+    word: &str,
+    _arg_n: usize,
+    dir_aliases: &[(String, String)],
+    case_sensitive: bool,
+) -> Vec<Pair> {
+    let matches = |s: &str| -> bool {
+        if case_sensitive { s.starts_with(word) }
+        else { s.to_lowercase().starts_with(&word.to_lowercase()) }
+    };
+
     match cmd {
-        // cd: direktori saja + alias khusus ~, -, ..
+        // cd: direktori + dir_aliases (~name) + standar
         "cd" => {
             let mut pairs: Vec<Pair> = ["~", "-", ".."]
                 .iter()
-                .filter(|&&s| s.starts_with(word))
+                .filter(|&&s| matches(s))
                 .map(|&s| Pair { display: s.to_string(), replacement: s.to_string() })
                 .collect();
-            let dirs: Vec<Pair> = complete_paths(word)
+
+            // Dir aliases dari config (~crush, ~cfg, dll)
+            for (alias, target) in dir_aliases {
+                let display_key = format!("~{}", alias);
+                if matches(&display_key) {
+                    pairs.push(Pair {
+                        display:     format!("~{}  (→ {})", alias, target),
+                        replacement: display_key,
+                    });
+                }
+            }
+
+            let dirs: Vec<Pair> = complete_paths(word, case_sensitive)
                 .into_iter()
                 .filter(|p| p.display.ends_with('/') || p.display.starts_with("→ "))
                 .collect();
@@ -361,7 +451,7 @@ fn complete_args(cmd: &str, word: &str, _arg_n: usize) -> Vec<Pair> {
 
         // type: nama builtin sebagai argumen
         "type" => BUILTINS.iter()
-            .filter(|&&b| b.starts_with(word))
+            .filter(|&&b| matches(b))
             .map(|&b| Pair { display: format!("{} [builtin]", b), replacement: b.to_string() })
             .collect(),
 
@@ -369,7 +459,10 @@ fn complete_args(cmd: &str, word: &str, _arg_n: usize) -> Vec<Pair> {
         "export" | "unset" => {
             let var_prefix = word.trim_start_matches('$');
             let mut pairs: Vec<Pair> = env::vars()
-                .filter(|(k, _)| k.starts_with(var_prefix))
+                .filter(|(k, _)| {
+                    if case_sensitive { k.starts_with(var_prefix) }
+                    else { k.to_lowercase().starts_with(&var_prefix.to_lowercase()) }
+                })
                 .map(|(k, v)| {
                     let display = if cmd == "export" {
                         format!("{}  (={})", k, if v.len() > 20 { &v[..20] } else { &v })
@@ -387,34 +480,33 @@ fn complete_args(cmd: &str, word: &str, _arg_n: usize) -> Vec<Pair> {
         "echo" => {
             if word.starts_with('-') {
                 ["-n", "-e", "-E"].iter()
-                    .filter(|&&f| f.starts_with(word))
+                    .filter(|&&f| matches(f))
                     .map(|&f| Pair { display: f.to_string(), replacement: f.to_string() })
                     .collect()
             } else {
-                complete_paths(word)
+                complete_paths(word, case_sensitive)
             }
         }
 
         // history: sub-opsi
         "history" => ["-c", "-r", "-w", "-n"].iter()
-            .filter(|&&o| o.starts_with(word))
+            .filter(|&&o| matches(o))
             .map(|&o| Pair { display: o.to_string(), replacement: o.to_string() })
             .collect(),
 
         // source: file script
-        "source" => complete_paths(word)
+        "source" => complete_paths(word, case_sensitive)
             .into_iter()
             .filter(|p| p.display.ends_with('/') || p.display.starts_with("→ ")
                 || p.display.ends_with(".sh") || p.display.ends_with(".crush")
                 || p.display.ends_with(".rc"))
             .collect(),
 
-        // Perintah lain: flag dengan '-' tidak ada info, selain itu file
         _ => {
             if word.starts_with('-') {
                 vec![]
             } else {
-                complete_paths(word)
+                complete_paths(word, case_sensitive)
             }
         }
     }
@@ -487,7 +579,7 @@ impl Highlighter for CrushCompleter {
         Cow::Owned(format!("\x1b[2;37m{}\x1b[0m", hint))
     }
 
-    /// Command hijau (dikenal) atau merah (tidak dikenal)
+    /// Command valid/invalid diwarnai sesuai [theme]; string/path diwarnai terpisah
     fn highlight<'l>(&self, line: &'l str, _pos: usize) -> Cow<'l, str> {
         if line.is_empty() { return Cow::Borrowed(line); }
 
@@ -497,13 +589,24 @@ impl Highlighter for CrushCompleter {
 
         if cmd.is_empty() { return Cow::Borrowed(line); }
 
-        let known = BUILTINS.contains(&cmd) || which::which(cmd).is_ok();
-        let out = if known {
-            format!("\x1b[1;32m{}\x1b[0m{}", cmd, rest)   // hijau
+        let aliases = self.alias_names();
+        let is_alias = aliases.iter().any(|a| a == cmd);
+        let known = is_alias || BUILTINS.contains(&cmd) || which::which(cmd).is_ok();
+
+        let cv  = self.color_valid();
+        let ci  = self.color_invalid();
+        let cs  = self.color_string();
+        let rst = "\x1b[0m";
+
+        // Warnai string/path di argumen
+        let rest_colored = color_rest(rest, &cs, rst);
+
+        let cmd_colored = if known {
+            format!("{}{}{}", cv, cmd, rst)
         } else {
-            format!("\x1b[1;31m{}\x1b[0m{}", cmd, rest)   // merah
+            format!("{}{}{}", ci, cmd, rst)
         };
-        Cow::Owned(out)
+        Cow::Owned(format!("{}{}", cmd_colored, rest_colored))
     }
 
     fn highlight_char(&self, _line: &str, _pos: usize, _kind: CmdKind) -> bool {
@@ -517,3 +620,74 @@ impl Highlighter for CrushCompleter {
 
 impl Validator for CrushCompleter {}
 impl Helper for CrushCompleter {}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Theme helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Konversi nama warna config → kode ANSI escape.
+/// bold=true untuk command, false untuk string/path.
+fn ansi_color(name: &str, bold: bool) -> String {
+    let b = if bold { "1;" } else { "" };
+    match name.to_lowercase().as_str() {
+        "red"     | "r" => format!("\x1b[{}31m", b),
+        "green"   | "g" => format!("\x1b[{}32m", b),
+        "yellow"  | "y" => format!("\x1b[{}33m", b),
+        "blue"    | "b" => format!("\x1b[{}34m", b),
+        "magenta" | "m" => format!("\x1b[{}35m", b),
+        "cyan"    | "c" => format!("\x1b[{}36m", b),
+        "white"   | "w" => format!("\x1b[{}37m", b),
+        "gray" | "grey"  => "\x1b[2;37m".into(),
+        _ => {
+            // Coba parse sebagai #RRGGBB atau angka ANSI
+            if let Ok(n) = name.parse::<u8>() {
+                format!("\x1b[{}38;5;{}m", b, n)
+            } else if name.starts_with('#') && name.len() == 7 {
+                if let (Ok(r), Ok(g), Ok(bl)) = (
+                    u8::from_str_radix(&name[1..3], 16),
+                    u8::from_str_radix(&name[3..5], 16),
+                    u8::from_str_radix(&name[5..7], 16),
+                ) {
+                    return format!("\x1b[{}38;2;{};{};{}m", b, r, g, bl);
+                }
+                format!("\x1b[{}32m", b) // fallback hijau
+            } else {
+                format!("\x1b[{}32m", b) // fallback hijau
+            }
+        }
+    }
+}
+
+/// Warnai bagian argumen setelah command:
+/// - token quoted ("..." atau '...') → warna string
+/// - token path (/, ~, ./) → warna string
+/// - yang lain → tidak diwarnai
+fn color_rest(rest: &str, string_color: &str, rst: &str) -> String {
+    if rest.is_empty() { return String::new(); }
+
+    let mut out = String::new();
+    // Proses token per token (simple whitespace split)
+    let tokens: Vec<&str> = rest.split_inclusive(char::is_whitespace).collect();
+    for token in tokens {
+        let trimmed = token.trim();
+        let trailing_space = &token[trimmed.len()..];
+
+        let is_string = trimmed.starts_with('"')
+            || trimmed.starts_with('\'')
+            || trimmed.starts_with('/')
+            || trimmed.starts_with('~')
+            || trimmed.starts_with("./")
+            || trimmed.starts_with("../");
+
+        if is_string && !trimmed.is_empty() {
+            out.push_str(string_color);
+            out.push_str(trimmed);
+            out.push_str(rst);
+        } else {
+            out.push_str(trimmed);
+        }
+        out.push_str(trailing_space);
+    }
+    // Jika tidak ada token yang diproses, kembalikan original
+    if out.is_empty() { rest.to_string() } else { out }
+}

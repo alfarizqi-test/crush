@@ -21,7 +21,8 @@ pub fn history_path() -> PathBuf {
     }
 }
 
-/// Buat rustyline Config yang sudah ditetapkan sesuai spesifikasi.
+/// Buat rustyline Config — Deprecated: gunakan config::shell::build_rl_config().
+#[allow(dead_code)]
 pub fn build_rl_config() -> rustyline::Config {
     rustyline::Config::builder()
         .max_history_size(1000)                                   // Maksimal simpan 1000 perintah
