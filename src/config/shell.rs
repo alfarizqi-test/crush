@@ -19,6 +19,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use serde::Deserialize;
+use crate::config::wrapper::WrapperConfig;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Struct definitions
@@ -165,6 +166,10 @@ pub struct ShellConfig {
     pub hooks:       HooksSection,
     pub history:     HistorySection,
     pub theme:       ThemeSection,
+
+    /// [functions.*] — wrapper functions (skip serde, diisi manual)
+    #[serde(skip)]
+    pub functions:   WrapperConfig,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -175,8 +180,19 @@ impl ShellConfig {
     /// Load config dari path tertentu.
     pub fn load_from(path: &Path) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
-        // toml::from_str hanya parse section yang ia kenal; wrapper/prompt diabaikan di sini
-        let cfg: ShellConfig = toml::from_str(&content)?;
+
+        // Parse sebagai raw toml::Table untuk dua tujuan:
+        //   1. Deserialize bagian shell via serde
+        //   2. Extract [functions.*] manual via WrapperConfig::from_toml
+        let table: toml::Table = toml::from_str(&content)?;
+
+        let mut cfg: ShellConfig = toml::Value::Table(table.clone())
+            .try_into()
+            .map_err(|e: toml::de::Error| anyhow::anyhow!(e))?;
+
+        // Load functions section
+        cfg.functions = WrapperConfig::from_toml(&table);
+
         Ok(cfg)
     }
 

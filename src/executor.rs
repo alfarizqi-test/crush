@@ -400,7 +400,7 @@ fn execute_segment(
             std::process::exit(0);
         }
         "help" => {
-            crate::help::print_help(rest.first().copied());
+            crate::help::print_help(rest.first().copied(), ctx.config);
             return 0;
         }
         "history" => {
@@ -521,7 +521,16 @@ fn execute_segment(
         "ls" => {
             return crate::ls::run(&rest);
         }
-        _ => {} // lanjut ke external command
+        _ => {} // lanjut ke wrapper atau external command
+    }
+
+    // ── Wrapper function dispatch ─────────────────────────────────────────────
+    // Cek apakah cmd cocok dengan salah satu [functions.*] dari config.
+    // Ini harus dilakukan sebelum mencoba external command agar wrapper
+    // punya prioritas di atas binary dengan nama sama di $PATH.
+    if let Some(func) = ctx.config.functions.get(cmd) {
+        let func = func.clone();
+        return crate::config::wrapper::execute_wrapper(&func, &rest, ctx);
     }
 
     // ── External command ─────────────────────────────────────────────────────

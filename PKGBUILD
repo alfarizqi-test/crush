@@ -1,5 +1,5 @@
 # Maintainer: Architect
-pkgname=Crush
+pkgname=crush
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="A modern, fast, and unified shell written in Rust"
@@ -8,18 +8,29 @@ url="https://github.com/alfarizqi-test/crush"
 license=('MIT')
 depends=('gcc-libs')
 makedepends=('cargo')
-install="${pkgname}.install" # Menghubungkan script .install di atas
-source=("${pkgname}-${pkgver}.tar.gz::https://github.com/alfarizqi-test/crush/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('SKIP') # Ganti dengan checksum aslinya nanti
+
+source=("git+file://${PWD}")
+# source=("${pkgname}-${pkgver}.tar.gz::https://github.com/alfarizqi-test/crush/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP') 
 
 build() {
-    cd "${pkgname}-${pkgver}"
-    # Build dengan mode release
+    # Hapus prefix versi karena kita mengambil dari git lokal
+    cd "${pkgname}"
     cargo build --release --locked
 }
 
 package() {
-    cd "${pkgname}-${pkgver}"
-    # Pindahkan binary hasil build ke /usr/bin/
+    cd "${pkgname}"
     install -Dm755 "target/release/${pkgname}" "${pkgdir}/usr/bin/${pkgname}"
 }
+
+# build() {
+#     cd "${pkgname}-${pkgver}"
+#     cargo build --release --locked
+# }
+
+# package() {
+#     cd "${pkgname}-${pkgver}"
+    # Pastikan nama binary dari Cargo.toml memang 'crush' (huruf kecil)
+#     install -Dm755 "target/release/${pkgname}" "${pkgdir}/usr/bin/${pkgname}"
+# }

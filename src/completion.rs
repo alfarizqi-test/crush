@@ -75,6 +75,20 @@ impl CrushCompleter {
             .unwrap_or_default()
     }
 
+    /// Helper: semua wrapper function names dari config
+    fn function_names(&self) -> Vec<String> {
+        self.config.read()
+            .map(|c| c.functions.names().iter().map(|s| s.to_string()).collect())
+            .unwrap_or_default()
+    }
+
+    /// Helper: gabungan alias + function names (untuk completion dan highlight)
+    fn user_defined_names(&self) -> Vec<String> {
+        let mut names = self.alias_names();
+        names.extend(self.function_names());
+        names
+    }
+
     /// Helper: warna valid command dari theme
     fn color_valid(&self) -> String {
         let color = self.config.read()
@@ -136,11 +150,11 @@ impl CrushCompleter {
             complete_paths(word, case_sensitive)
 
         } else if arg_position == 0 {
-            // command completion: builtin + aliases + executables
-            let aliases = self.alias_names();
-            let pairs = complete_executables(word, &aliases, case_sensitive);
+            // command completion: builtin + aliases + functions + executables
+            let user_names = self.user_defined_names();
+            let pairs = complete_executables(word, &user_names, case_sensitive);
             if pairs.is_empty() && !word.is_empty() {
-                fallback_typo(word, &aliases)
+                fallback_typo(word, &user_names)
             } else {
                 pairs
             }
@@ -154,7 +168,7 @@ impl CrushCompleter {
                 if !file_pairs.is_empty() {
                     file_pairs
                 } else if !word.is_empty() {
-                    fallback_typo(word, &self.alias_names())
+                    fallback_typo(word, &self.user_defined_names())
                 } else {
                     vec![]
                 }
@@ -589,9 +603,9 @@ impl Highlighter for CrushCompleter {
 
         if cmd.is_empty() { return Cow::Borrowed(line); }
 
-        let aliases = self.alias_names();
-        let is_alias = aliases.iter().any(|a| a == cmd);
-        let known = is_alias || BUILTINS.contains(&cmd) || which::which(cmd).is_ok();
+        let user_names = self.user_defined_names();
+        let is_user_defined = user_names.iter().any(|a| a == cmd);
+        let known = is_user_defined || BUILTINS.contains(&cmd) || which::which(cmd).is_ok();
 
         let cv  = self.color_valid();
         let ci  = self.color_invalid();

@@ -4,6 +4,7 @@
 
 use std::io::{self, Write};
 use crate::history::history_path;
+use crate::config::ShellConfig;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ANSI helpers
@@ -63,9 +64,9 @@ fn print_config() {
 
     row("Config directory", &config_dir);
     row("History file",     &history_file.to_string_lossy());
-    row("History size",     "1000 entries (max)");
+    row("Config file",      &format!("{}/config.toml", config_dir));
+    row("History size",     "10000 entries (configurable)");
     row("History dedup",    "enabled — duplicates & space-prefixed skipped");
-    row("Config file",      &format!("{}/config.toml  (planned)", config_dir));
 }
 
 fn print_builtins() {
@@ -154,19 +155,63 @@ fn print_bindings() {
     println!("    {}  Gunakan → atau Shift+Tab untuk menerimanya.{}", DIM, RST);
 }
 
+fn print_functions(cfg: &ShellConfig) {
+    header("WRAPPER FUNCTIONS  [functions.*]");
+
+    if cfg.functions.is_empty() {
+        println!("    {}No functions defined in config.toml{}", DIM, RST);
+        println!();
+        println!("    {}Add functions in your config.toml:{}", WHITE, RST);
+        println!("    {}[functions.y]{}", DIM, RST);
+        println!("    {}description = \"Yazi with cd-on-exit\"{}", DIM, RST);
+        println!("    {}body = \"\"\"...body...\"\"\"{}", DIM, RST);
+        return;
+    }
+
+    for name in {
+        let mut names = cfg.functions.names();
+        names.sort();
+        names
+    } {
+        if let Some(func) = cfg.functions.get(name) {
+            let desc = if func.description.is_empty() {
+                "(no description)"
+            } else {
+                &func.description
+            };
+            row(name, desc);
+            // Tampilkan preview body (max 3 baris)
+            let preview: Vec<&str> = func.body.lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty() && !l.starts_with('#'))
+                .take(3)
+                .collect();
+            for l in &preview {
+                println!("      {}  {}{}\n{}", DIM, l, RST, "");
+            }
+            if func.body.lines().filter(|l| !l.trim().is_empty()).count() > 3 {
+                println!("      {}  ...(truncated){}", DIM, RST);
+            }
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Entry point
 // ─────────────────────────────────────────────────────────────────────────────
 
-pub fn print_help(topic: Option<&str>) {
+pub fn print_help(topic: Option<&str>, cfg: &ShellConfig) {
     let stdout = io::stdout();
-    let _lock = stdout.lock(); // buffer output agar tidak terpotong
+    let _lock = stdout.lock();
 
     match topic {
         None => {
             print_banner();
             print_config();
             print_builtins();
+            if !cfg.functions.is_empty() {
+                print_functions(cfg);
+            }
             print_bindings();
             println!();
         }
@@ -182,10 +227,14 @@ pub fn print_help(topic: Option<&str>) {
             print_config();
             println!();
         }
+        Some("functions") | Some("function") | Some("fn") | Some("wrapper") | Some("wrappers") => {
+            print_functions(cfg);
+            println!();
+        }
         Some(unknown) => {
             eprintln!(
-                "help: topic '{}' tidak dikenal. Coba: {}help builtins{}, {}help bindings{}, {}help config{}",
-                unknown, GREEN, RST, GREEN, RST, GREEN, RST
+                "help: topic '{}' tidak dikenal. Coba: {}help builtins{}, {}help bindings{}, {}help functions{}, {}help config{}",
+                unknown, GREEN, RST, GREEN, RST, GREEN, RST, GREEN, RST
             );
         }
     }
