@@ -170,6 +170,8 @@ pub struct ShellConfig {
     /// [functions.*] — wrapper functions (skip serde, diisi manual)
     #[serde(skip)]
     pub functions:   WrapperConfig,
+
+    pub prompt:      crate::config::prompt::PromptConfig,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

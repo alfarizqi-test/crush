@@ -1,234 +1,11 @@
-// config/prompt.rs — Builtin prompt engine (starship-like)
-//
-// Membaca section [prompt] dan [prompt.*] dari config.toml.
-//
-// STATUS: Struct definitions sudah lengkap, renderer belum diimplementasikan.
-//
-// Format string menggunakan variable expansion:
-//   $directory, $git_branch, $cmd_duration, $character, $username, $hostname
-//
-// Rencana sesi berikutnya:
-//   1. Renderer per-modul (fn render_directory(), fn render_git_branch(), dst)
-//   2. Format parser: pecah format string menjadi Vec<Segment>
-//   3. Integrasi dengan build_prompt() di main.rs
-//   4. Git status via std::process::Command("git", ["status", "--porcelain"])
-//   5. cmd_duration: ukur elapsed time per command
-
-use serde::Deserialize;
 use std::collections::HashMap;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-section structs
-// ─────────────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(default)]
-pub struct CharacterSection {
-    pub success_symbol: String,
-    pub error_symbol:   String,
-}
-
-impl Default for CharacterSection {
-    fn default() -> Self {
-        Self {
-            success_symbol: "\x1b[1;32m❯\x1b[0m ".into(),
-            error_symbol:   "\x1b[1;31m❯\x1b[0m ".into(),
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(default)]
-pub struct DirectorySection {
-    pub home_symbol:        String,
-    pub read_only:          String,
-    pub style:              String,
-    pub truncation_length:  usize,
-    pub truncation_symbol:  String,
-    pub format:             String,
-    pub substitutions:      HashMap<String, String>,
-}
-
-impl Default for DirectorySection {
-    fn default() -> Self {
-        Self {
-            home_symbol:       "~".into(),
-            read_only:         " 󰌾".into(),
-            style:             "bold blue".into(),
-            truncation_length: 3,
-            truncation_symbol: ".../".into(),
-            format:            "[$path]($style) ".into(),
-            substitutions:     HashMap::new(),
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(default)]
-pub struct CmdDurationSection {
-    /// Durasi minimum (ms) sebelum ditampilkan
-    pub min_time: u64,
-    pub format:   String,
-}
-
-impl Default for CmdDurationSection {
-    fn default() -> Self {
-        Self {
-            min_time: 2000,
-            format:   "took [$duration]($style) ".into(),
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(default)]
-pub struct GitBranchSection {
-    pub style:              String,
-    pub symbol:             String,
-    pub truncation_length:  usize,
-    pub truncation_symbol:  String,
-    pub format:             String,
-}
-
-impl Default for GitBranchSection {
-    fn default() -> Self {
-        Self {
-            style:             "bold purple".into(),
-            symbol:            " ".into(),
-            truncation_length: usize::MAX,
-            truncation_symbol: "…".into(),
-            format:            "on [$symbol$branch]($style) ".into(),
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(default)]
-pub struct GitStatusSection {
-    pub conflicted: String,
-    pub ahead:      String,
-    pub behind:     String,
-    pub diverged:   String,
-    pub untracked:  String,
-    pub stashed:    String,
-    pub modified:   String,
-    pub staged:     String,
-    pub renamed:    String,
-    pub deleted:    String,
-}
-
-impl Default for GitStatusSection {
-    fn default() -> Self {
-        Self {
-            conflicted: "=".into(),
-            ahead:      "⇡".into(),
-            behind:     "⇣".into(),
-            diverged:   "⇕".into(),
-            untracked:  "?".into(),
-            stashed:    "$".into(),
-            modified:   "!".into(),
-            staged:     "+".into(),
-            renamed:    "»".into(),
-            deleted:    "✘".into(),
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(default)]
-pub struct UsernameSection {
-    pub style_user:  String,
-    pub style_root:  String,
-    pub format:      String,
-    pub show_always: bool,
-    pub disabled:    bool,
-}
-
-impl Default for UsernameSection {
-    fn default() -> Self {
-        Self {
-            style_user:  "bold yellow".into(),
-            style_root:  "bold red".into(),
-            format:      "[$user]($style) ".into(),
-            show_always: false,
-            disabled:    false,
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(default)]
-pub struct HostnameSection {
-    pub ssh_only: bool,
-    pub format:   String,
-    pub trim_at:  String,
-    pub disabled: bool,
-}
-
-impl Default for HostnameSection {
-    fn default() -> Self {
-        Self {
-            ssh_only: true,
-            format:   "on [$hostname]($style) ".into(),
-            trim_at:  ".".into(),
-            disabled: false,
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Root prompt config
-// ─────────────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(default)]
-pub struct PromptConfig {
-    /// Format string utama prompt, menggunakan $module_name sebagai placeholder
-    pub format:       String,
-
-    pub character:    CharacterSection,
-    pub directory:    DirectorySection,
-    pub cmd_duration: CmdDurationSection,
-    pub git_branch:   GitBranchSection,
-    pub git_status:   GitStatusSection,
-    pub username:     UsernameSection,
-    pub hostname:     HostnameSection,
-}
-
-impl Default for PromptConfig {
-    fn default() -> Self {
-        Self {
-            // Format sederhana default — akan di-override dari config.toml
-            format:       "$directory$git_branch\n$character".into(),
-            character:    Default::default(),
-            directory:    Default::default(),
-            cmd_duration: Default::default(),
-            git_branch:   Default::default(),
-            git_status:   Default::default(),
-            username:     Default::default(),
-            hostname:     Default::default(),
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Renderer
-// ─────────────────────────────────────────────────────────────────────────────
-
 use std::env;
 use std::process::Command;
+
+use crate::config::prompt::{
+    PromptConfig, DirectorySection, GitBranchSection, GitStatusSection,
+    CmdDurationSection, CharacterSection, UsernameSection, HostnameSection
+};
 
 pub struct PromptContext {
     pub last_exit_code: i32,
@@ -337,7 +114,7 @@ fn expand_vars(text: &str, vars: &HashMap<&str, String>) -> String {
             out.push(c);
         }
     }
-    // Simple conditional `(:remote_branch)` removal if empty (heuristic)
+    // Very simple conditional `(:remote_branch)` removal if empty
     out = out.replace("(:)", "");
     out
 }
@@ -346,7 +123,7 @@ fn render_module_format(format: &str, vars: &HashMap<&str, String>, default_styl
     let mut out = String::new();
     let mut chars = format.chars().peekable();
     
-    // Pattern: `[text](style)`
+    // We want to detect `[text](style)` pattern
     while let Some(c) = chars.next() {
         if c == '[' {
             let mut bracket_content = String::new();
@@ -371,6 +148,11 @@ fn render_module_format(format: &str, vars: &HashMap<&str, String>, default_styl
                 let actual_style = if style_ref == "$style" { default_style } else { &style_ref };
                 let replaced = expand_vars(&bracket_content, vars);
                 
+                // Only render if there's actual content (ignoring spaces/symbols if variable was empty)
+                // Actually Starship skips the block if the variable inside it was empty.
+                // Let's do a simple check: if the expanded content has no alphanumeric characters
+                // and it had a variable, we might want to skip it.
+                // For simplicity, we just check if replaced is empty.
                 if !replaced.is_empty() {
                     out.push_str(&apply_style(&replaced, actual_style));
                 }
@@ -455,6 +237,7 @@ fn render_git_branch(cfg: &GitBranchSection) -> String {
         if out.status.success() {
             let mut branch = String::from_utf8_lossy(&out.stdout).trim().to_string();
             if branch == "HEAD" {
+                // Try to get short hash
                 if let Ok(hash_out) = Command::new("git").args(["rev-parse", "--short", "HEAD"]).output() {
                     branch = String::from_utf8_lossy(&hash_out.stdout).trim().to_string();
                 }
@@ -478,7 +261,8 @@ fn render_git_branch(cfg: &GitBranchSection) -> String {
 }
 
 fn render_git_status(_cfg: &GitStatusSection) -> String {
-    String::new() // Placeholder
+    // Left as an exercise, simplified for now
+    String::new()
 }
 
 fn render_cmd_duration(cfg: &CmdDurationSection, ms: u64) -> String {
@@ -500,6 +284,9 @@ fn render_cmd_duration(cfg: &CmdDurationSection, ms: u64) -> String {
 
 fn render_character(cfg: &CharacterSection, success: bool) -> String {
     if success {
+        // Character section format in config is usually just direct string with ansi
+        // e.g. success_symbol = "[ ](bold fg:243)"
+        // Let's parse it using render_module_format but without variables
         render_module_format(&cfg.success_symbol, &HashMap::new(), "")
     } else {
         render_module_format(&cfg.error_symbol, &HashMap::new(), "")
@@ -511,6 +298,7 @@ fn render_username(cfg: &UsernameSection) -> String {
     let user = env::var("USER").unwrap_or_default();
     
     if !cfg.show_always && user != "root" {
+        // Maybe check if SSH or something, but we respect show_always here
         return String::new();
     }
     

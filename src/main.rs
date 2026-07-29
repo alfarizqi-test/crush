@@ -22,23 +22,10 @@ use executor::{parse_input, tokenize_operators, ExecContext};
 use jobs::new_job_table;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Prompt (sementara — akan digantikan config::prompt renderer sesi berikutnya)
+// Prompt
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn build_prompt() -> String {
-    if let Ok(cwd) = env::current_dir() {
-        let home = env::var("HOME").unwrap_or_default();
-        let path_str = cwd.to_string_lossy();
-        let display = if !home.is_empty() && path_str.starts_with(home.as_str()) {
-            format!("~{}", &path_str[home.len()..])
-        } else {
-            path_str.to_string()
-        };
-        format!("\x1b[1;34m[ {} ]\x1b[0m\n\x1b[1;32m❯\x1b[0m ", display)
-    } else {
-        "\x1b[1;32m❯\x1b[0m ".to_string()
-    }
-}
+// build_prompt dihapus, sekarang menggunakan config::prompt::render_prompt
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main
@@ -126,6 +113,10 @@ fn main() {
         }
     }
 
+    let mut last_exit_code = 0;
+    let mut last_duration_ms = 0;
+    let is_ssh = env::var("SSH_CONNECTION").is_ok() || env::var("SSH_CLIENT").is_ok();
+
     // ── REPL ──────────────────────────────────────────────────────────────────
     loop {
         {
@@ -136,7 +127,16 @@ fn main() {
         let add_newline = cfg_arc.read().unwrap().shell.add_newline_before_prompt;
         if add_newline { println!(); }
 
-        let prompt   = build_prompt();
+        let prompt = {
+            let cfg = cfg_arc.read().unwrap();
+            let prompt_ctx = config::prompt::PromptContext {
+                last_exit_code,
+                cmd_duration_ms: last_duration_ms,
+                is_ssh,
+            };
+            config::prompt::render_prompt(&cfg.prompt, &prompt_ctx)
+        };
+        
         let readline = rl.readline(&prompt);
 
         match readline {
@@ -168,7 +168,9 @@ fn main() {
                     raw_input: &input,
                     config:    &cfg_snap,
                 };
-                executor::execute_line(&mut ctx, units);
+                let start_time = std::time::Instant::now();
+                last_exit_code = executor::execute_line(&mut ctx, units);
+                last_duration_ms = start_time.elapsed().as_millis() as u64;
             }
 
             Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
