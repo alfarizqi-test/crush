@@ -32,6 +32,15 @@ use jobs::new_job_table;
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn main() {
+    // Abaikan SIGINT di level shell menggunakan libc.
+    // Saat perintah eksternal berjalan (misalnya `sleep 100`), menekan Ctrl+C akan mengirim SIGINT
+    // ke shell dan proses anak (karena mereka berada di foreground process group yang sama).
+    // Dengan mengabaikannya di sini, shell tetap hidup sementara proses anak akan mati secara default.
+    // Saat tidak ada proses berjalan (mengetik prompt), Rustyline yang menangani Ctrl+C.
+    unsafe {
+        libc::signal(libc::SIGINT, libc::SIG_IGN);
+    }
+
     shell::ShellInfo::init_environment();
 
     if let Some(arg) = std::env::args().nth(1) {
@@ -173,7 +182,12 @@ fn main() {
                 last_duration_ms = start_time.elapsed().as_millis() as u64;
             }
 
-            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
+            Err(ReadlineError::Interrupted) => {
+                println!("^C");
+                continue;
+            }
+
+            Err(ReadlineError::Eof) => {
                 println!("\nexiting crush. goodbye!");
                 break;
             }
@@ -206,17 +220,15 @@ fn apply_config_bindings(
         let cmd = match action.as_str() {
             "clear_screen"   => Cmd::ClearScreen,
             "search_history" => Cmd::ReverseSearchHistory,
-            "exit_shell"     => Cmd::Interrupt,
+            "exit_shell"     => Cmd::EndOfFile,
             "accept_line"    => Cmd::AcceptLine,
             "move_home"      => Cmd::Move(rustyline::Movement::BeginningOfLine),
             "move_end"       => Cmd::Move(rustyline::Movement::EndOfLine),
             "complete_hint"  => Cmd::CompleteHint,
             "complete_list"  => Cmd::Complete,
-            // "execute: <cmd>" → ExternalPrint (tidak bisa langsung, catat untuk REPL)
-            // Saat ini: skip action execute karena butuh REPL loop hook
             _ if action.starts_with("execute:") => {
-                // TODO sesi berikutnya: inject string ke readline buffer lalu accept
-                continue;
+                let cmd_str = action["execute:".len()..].trim().to_string();
+                Cmd::Insert(1, cmd_str)
             }
             _ => {
                 eprintln!("crush: unknown binding action: {:?}", action);

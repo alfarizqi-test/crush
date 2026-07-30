@@ -474,7 +474,7 @@ fn execute_segment(
         }
         "type" => {
             let builtins = ["echo","cd","pwd","type","exit","history",
-                            "clear","help","export","unset","source","jobs","ls"];
+                            "clear","help","export","unset","source","jobs","ls", "refresh"];
             for &arg in &rest {
                 if builtins.contains(&arg) {
                     println!("{} is a shell builtin", arg);
@@ -521,6 +521,13 @@ fn execute_segment(
         "ls" => {
             return crate::ls::run(&rest);
         }
+        "refresh" => {
+            if let Some(path) = env::var_os("PATH") {
+                unsafe { env    ::set_var("PATH", &path); }
+            }
+            println!("Refreshed!");
+            return 0;
+        }
         _ => {} // lanjut ke wrapper atau external command
     }
 
@@ -563,7 +570,7 @@ fn execute_segment(
             }
         }
         Err(_) => {
-            eprintln!("{}: command not found", cmd);
+            eprintln!("crush: {}: command not found", cmd);
             127
         }
     }
