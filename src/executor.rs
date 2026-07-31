@@ -216,9 +216,13 @@ pub fn expand_variables(arg: &str) -> String {
 }
 
 pub fn expand_tilde(path: &str) -> String {
-    if path.starts_with('~') {
+    if path == "~" {
         if let Ok(home) = env::var("HOME") {
-            return path.replacen('~', &home, 1);
+            return home;
+        }
+    } else if path.starts_with("~/") {
+        if let Ok(home) = env::var("HOME") {
+            return path.replacen("~/", &format!("{}/", home), 1);
         }
     }
     path.to_string()
@@ -236,6 +240,7 @@ pub struct ExecContext<'a> {
                    >,
     pub raw_input: &'a str,
     pub config:    &'a ShellConfig,
+    pub cfg_arc:   &'a std::sync::Arc<std::sync::RwLock<ShellConfig>>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -474,7 +479,7 @@ fn execute_segment(
         }
         "type" => {
             let builtins = ["echo","cd","pwd","type","exit","history",
-                            "clear","help","export","unset","source","jobs","ls", "refresh"];
+                            "clear","help","export","unset","source","jobs","ls", "rehash", "reload"];
             for &arg in &rest {
                 if builtins.contains(&arg) {
                     println!("{} is a shell builtin", arg);
@@ -521,11 +526,20 @@ fn execute_segment(
         "ls" => {
             return crate::ls::run(&rest);
         }
-        "refresh" => {
+        "rehash" => {
             if let Some(path) = env::var_os("PATH") {
                 unsafe { env    ::set_var("PATH", &path); }
             }
-            println!("Refreshed!");
+            println!("Rehashed!");
+            return 0;
+        }
+        "reload" => {
+            let new_cfg = ShellConfig::load();
+            new_cfg.apply_env();
+            if let Ok(mut lock) = ctx.cfg_arc.write() {
+                *lock = new_cfg;
+            }
+            println!("crush: config reloaded successfully.");
             return 0;
         }
         _ => {} // lanjut ke wrapper atau external command

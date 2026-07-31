@@ -10,8 +10,7 @@ syntax_highlighting = true
 [startup]
 commands = [
     # "cat ~/.local/state/quickshell/user/generated/terminal/sequences.txt",
-    "clear",
-    "fastfetch"
+    "clear"
 ]
 
 [env]
@@ -38,7 +37,7 @@ a = "antigravity ."
 b = "btop"
 c = "code ."
 d = "dolphin ."
-f = "clear && fastfetch"
+f = "fastfetch"
 g = "grep -Rin"
 l = "clear"
 m = "unimatrix -c magenta -u \"♩♪♫♬♭♮♯\" -s 96"
@@ -52,7 +51,7 @@ z = "zellij --layout dev"
 "Ctrl+D" = "exit_shell"
 
 # execute command y for yazi wrapper
-"Ctrl+F" = "execute: y"
+"Ctrl+T" = "execute: y"
 
 [completion]
 case_sensitive = false
@@ -116,8 +115,8 @@ $cmd_duration $directory$git_branch
   $character"""
 
 [prompt.character]
-success_symbol = "[ ](bold fg:243)"
-error_symbol = "[ ](bold fg:244)"
+success_symbol = "[  ](bold fg:243)"
+error_symbol = "[  ](bold fg:244)"
 
 [prompt.directory]
 home_symbol = " "

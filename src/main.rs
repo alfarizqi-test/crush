@@ -14,7 +14,7 @@ use std::sync::{Arc, RwLock};
 use rustyline::error::ReadlineError;
 use rustyline::history::FileHistory;
 use rustyline::KeyCode::*;
-use rustyline::{Cmd, Editor, KeyEvent, Modifiers};
+use rustyline::{Cmd, Editor, KeyEvent, Modifiers, EventHandler, ConditionalEventHandler, Event, EventContext, RepeatCount};
 
 use completion::CrushCompleter;
 use config::ShellConfig;
@@ -117,6 +117,7 @@ fn main() {
                 rl:        &mut rl,
                 raw_input: cmd_str,
                 config:    &cfg_snap,
+                cfg_arc:   &cfg_arc,
             };
             executor::execute_line(&mut ctx, units);
         }
@@ -176,6 +177,7 @@ fn main() {
                     rl:        &mut rl,
                     raw_input: &input,
                     config:    &cfg_snap,
+                    cfg_arc:   &cfg_arc,
                 };
                 let start_time = std::time::Instant::now();
                 last_exit_code = executor::execute_line(&mut ctx, units);
@@ -183,7 +185,9 @@ fn main() {
             }
 
             Err(ReadlineError::Interrupted) => {
-                println!("^C");
+                print!("\x1b[2A\r\x1b[0J");
+                use std::io::Write;
+                let _ = std::io::stdout().flush();
                 continue;
             }
 
@@ -203,8 +207,28 @@ fn main() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Config-driven keybindings
+// Config-driven keybindings & State Injection
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// State Injection Escape Hatch
+/// Digunakan untuk memasukkan string langsung ke input buffer tty via ioctl TIOCSTI.
+/// Hal ini "menipu" terminal agar seolah-olah user yang mengetikkannya dengan cepat.
+struct InjectAndExecute(String);
+impl ConditionalEventHandler for InjectAndExecute {
+    fn handle(&self, _evt: &Event, _n: RepeatCount, _pos: bool, _ctx: &EventContext) -> Option<Cmd> {
+        unsafe {
+            for byte in self.0.as_bytes() {
+                let mut c = *byte as libc::c_char;
+                libc::ioctl(libc::STDIN_FILENO, libc::TIOCSTI, &mut c as *mut _ as *mut libc::c_void);
+            }
+            let mut nl = b'\n' as libc::c_char;
+            libc::ioctl(libc::STDIN_FILENO, libc::TIOCSTI, &mut nl as *mut _ as *mut libc::c_void);
+        }
+        // Mengembalikan None agar rustyline tidak melakukan perintah bawaan
+        None
+    }
+}
+
 
 /// Terapkan [bindings] dari config ke rustyline editor.
 /// Format key: "Ctrl+L", "Ctrl+R", "Alt+X", "Ctrl+F"
@@ -217,6 +241,15 @@ fn apply_config_bindings(
     for (key_str, action) in &cfg.bindings {
         let Some(key_event) = parse_key_str(key_str) else { continue; };
 
+        if action.starts_with("execute:") {
+            let cmd_str = action["execute:".len()..].trim().to_string();
+            rl.bind_sequence(
+                key_event,
+                EventHandler::Conditional(Box::new(InjectAndExecute(cmd_str)))
+            );
+            continue;
+        }
+
         let cmd = match action.as_str() {
             "clear_screen"   => Cmd::ClearScreen,
             "search_history" => Cmd::ReverseSearchHistory,
@@ -226,10 +259,6 @@ fn apply_config_bindings(
             "move_end"       => Cmd::Move(rustyline::Movement::EndOfLine),
             "complete_hint"  => Cmd::CompleteHint,
             "complete_list"  => Cmd::Complete,
-            _ if action.starts_with("execute:") => {
-                let cmd_str = action["execute:".len()..].trim().to_string();
-                Cmd::Insert(1, cmd_str)
-            }
             _ => {
                 eprintln!("crush: unknown binding action: {:?}", action);
                 continue;
