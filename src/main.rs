@@ -300,7 +300,7 @@ fn parse_key_str(s: &str) -> Option<KeyEvent> {
         "Down"             => Down,
         "Left"             => Left,
         "Right"            => Right,
-        s if s.len() == 1  => Char(s.chars().next()?),
+        s if s.len() == 1  => Char(s.chars().next()?.to_ascii_lowercase()),
         _                  => return None,
     };
 

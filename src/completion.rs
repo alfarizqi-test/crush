@@ -34,7 +34,8 @@ use crate::config::ShellConfig;
 
 const BUILTINS: &[&str] = &[
     "echo", "cd", "pwd", "type", "exit", "history", "clear",
-    "export", "unset", "source", "jobs", "help", "ls",
+    "export", "unset", "source", "jobs", "help", "ls", "reload",
+    "rehash",
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

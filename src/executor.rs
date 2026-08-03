@@ -415,7 +415,7 @@ fn execute_segment(
             return 0;
         }
         "clear" => {
-            print!("\x1b[2J\x1b[H");
+            print!("\x1b[2J\x1b[3J\x1b[1;1H");
             io::stdout().flush().ok();
             // Hook: on_clear
             let hook = ctx.config.hooks.on_clear.clone();
