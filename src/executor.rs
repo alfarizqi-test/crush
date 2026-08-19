@@ -470,6 +470,12 @@ fn execute_segment(
                 return 1;
             }
 
+            if let Ok(current_path) = env::current_dir() {
+                unsafe {
+                    env::set_var("PWD", current_path.to_string_lossy().as_ref());
+                }
+            }
+
             // Hook: on_cd
             let hook = ctx.config.hooks.on_cd.clone();
             if !hook.is_empty() {

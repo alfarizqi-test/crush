@@ -11,7 +11,8 @@ syntax_highlighting = true
 commands = [
     # "cat ~/.local/state/quickshell/user/generated/terminal/sequences.txt",
     "clear",
-    "fastfetch"
+    "fastfetch",
+    "echo 'Добро пожаловать в crush. Система под контролем Архитектора.'"
 ]
 
 [env]
@@ -39,7 +40,8 @@ g = "grep -Rin"
 l = "clear"
 m = "unimatrix -c magenta -u \"♩♪♫♬♭♮♯\" -s 96"
 n = "nvim"
-q = "qs -c ii"
+p = "ping -c 4"
+q = "exit"
 z = "zellij --layout dev"
 
 [bindings]
@@ -58,7 +60,8 @@ inline_suggestions = true
 [dir_aliases]
 # work if user exec cd ~crush or ~crush/src, nvim ~crush/src/main.rs, and other command
 crush = "~/Templates/TUI/crush"
-cfg = "~/.config"
+coda = "~/Templates/ricing/coda"
+cfg = "~/.config/crush"
 dl = "~/Downloads"
 
 [hooks]
