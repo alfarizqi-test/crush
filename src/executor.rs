@@ -13,6 +13,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::os::unix::process::CommandExt;
 use which::which;
 
 use crate::jobs::SharedJobTable;
@@ -349,6 +350,7 @@ fn execute_pipeline(ctx: &mut ExecContext<'_>, mut segments: Vec<Segment>) -> i3
             &seg,
             stdin_source,
             stdout_dest,
+            false,
         );
 
         match child_result {
@@ -567,7 +569,7 @@ fn execute_segment(
         redirect_out: seg.redirect_out.clone(),
         redirect_err: seg.redirect_err.clone(),
         background: seg.background,
-    }, stdin_override, stdout_override);
+    }, stdin_override, stdout_override, is_bg);
 
     match child_result {
         Ok(child) => {
@@ -612,6 +614,7 @@ fn spawn_process(
     seg: &Segment,
     stdin_override: Option<Stdio>,
     stdout_override: Option<Stdio>,
+    is_bg: bool,
 ) -> io::Result<Child> {
     let cmd = &seg.args[0];
     let rest: Vec<&str> = seg.args[1..].iter().map(|s| s.as_str()).collect();
@@ -634,6 +637,21 @@ fn spawn_process(
     // Stderr
     if let Some(re) = &seg.redirect_err {
         proc.stderr(open_redirect(re)?);
+    }
+
+    unsafe {
+        proc.pre_exec(move || {
+            if is_bg {
+                // Background process: place it in its own process group
+                // so it doesn't receive keyboard signals like SIGINT.
+                libc::setpgid(0, 0);
+            } else {
+                // Foreground process: restore SIGINT to default behavior
+                // so it can be terminated via Ctrl+C.
+                libc::signal(libc::SIGINT, libc::SIG_DFL);
+            }
+            Ok(())
+        });
     }
 
     proc.spawn()

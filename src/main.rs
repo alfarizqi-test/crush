@@ -70,7 +70,6 @@ fn main() {
 
     // ── Keybindings ───────────────────────────────────────────────────────────
     // Hard-coded bindings (rustyline internal)
-    rl.bind_sequence(KeyEvent(Char('d'), Modifiers::CTRL),   Cmd::Interrupt);
     rl.bind_sequence(KeyEvent(BackTab, Modifiers::NONE),     Cmd::CompleteHint);
     rl.bind_sequence(KeyEvent(Char(' '), Modifiers::CTRL),   Cmd::Complete);
     rl.bind_sequence(KeyEvent(Char('l'), Modifiers::ALT),    Cmd::Complete);
@@ -210,6 +209,17 @@ fn main() {
 // Config-driven keybindings & State Injection
 // ─────────────────────────────────────────────────────────────────────────────
 
+struct ExitShellHandler;
+impl ConditionalEventHandler for ExitShellHandler {
+    fn handle(&self, _evt: &Event, _n: RepeatCount, _pos: bool, ctx: &EventContext) -> Option<Cmd> {
+        if ctx.line().is_empty() {
+            Some(Cmd::EndOfFile)
+        } else {
+            Some(Cmd::Kill(rustyline::Movement::ForwardChar(1)))
+        }
+    }
+}
+
 /// State Injection Escape Hatch
 /// Digunakan untuk memasukkan string langsung ke input buffer tty via ioctl TIOCSTI.
 /// Hal ini "menipu" terminal agar seolah-olah user yang mengetikkannya dengan cepat.
@@ -253,7 +263,10 @@ fn apply_config_bindings(
         let cmd = match action.as_str() {
             "clear_screen"   => Cmd::ClearScreen,
             "search_history" => Cmd::ReverseSearchHistory,
-            "exit_shell"     => Cmd::EndOfFile,
+            "exit_shell"     => {
+                rl.bind_sequence(key_event, EventHandler::Conditional(Box::new(ExitShellHandler)));
+                continue;
+            }
             "accept_line"    => Cmd::AcceptLine,
             "move_home"      => Cmd::Move(rustyline::Movement::BeginningOfLine),
             "move_end"       => Cmd::Move(rustyline::Movement::EndOfLine),

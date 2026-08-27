@@ -27,14 +27,15 @@ PATH = [
 
 [aliases]
 pamcan = "pacman"
-
+mon = "sudo mount -o ro /dev/sdb3 /mnt/ssd"
+umon = "sudo umount /mnt/ssd"
 ssh = "kitten ssh"
 
 # Quick Aliases
-a = "antigravity ."
+a = "antigravity-ide ."
 b = "btop"
 c = "code ."
-d = "dolphin ."
+d = "thunar ."
 f = "clear && fastfetch"
 g = "grep -Rin"
 l = "clear"
@@ -42,6 +43,7 @@ m = "unimatrix -c magenta -u \"♩♪♫♬♭♮♯\" -s 96"
 n = "nvim"
 p = "ping -c 4"
 q = "exit"
+s = "systemctl poweroff"
 z = "zellij --layout dev"
 
 [bindings]
@@ -59,8 +61,9 @@ inline_suggestions = true
 
 [dir_aliases]
 # work if user exec cd ~crush or ~crush/src, nvim ~crush/src/main.rs, and other command
-crush = "~/Templates/TUI/crush"
-coda = "~/Templates/ricing/coda"
+crush = "~/Rust/crush"
+coda = "~/Rust/coda"
+niri = "~/.config/niri"
 cfg = "~/.config/crush"
 dl = "~/Downloads"
 
@@ -102,6 +105,16 @@ if [ -n "$cwd" ]
     end
 end
 rm -f -- "$tmp"
+"""
+
+[functions.start_niri]
+description = "Jalankan Niri HANYA jika berada di TTY murni"
+body = """
+if [ -z "$WAYLAND_DISPLAY" ]
+    niri
+else
+    echo "Peringatan: Niri sudah berjalan, Arsitek!"
+end
 """
 
 # ==========================================
