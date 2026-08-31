@@ -6,31 +6,25 @@ pkgdesc="A modern, fast, and unified shell written in Rust"
 arch=('x86_64')
 url="https://github.com/alfarizqi-test/crush"
 license=('MIT')
-depends=('gcc-libs')
+depends=('gcc-libs' 'glibc')
 makedepends=('cargo')
 
-source=("git+file://${PWD}")
-# source=("${pkgname}-${pkgver}.tar.gz::https://github.com/alfarizqi-test/crush/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('SKIP') 
+# Mengambil langsung dari tarball rilis GitHub
+source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP') # Ganti 'SKIP' dengan hash SHA256 asli jika sudah final
 
 build() {
-    # Hapus prefix versi karena kita mengambil dari git lokal
-    cd "${pkgname}"
+    cd "${pkgname}-${pkgver}"
+    # Opsi --locked memastikan cargo menggunakan versi dependency persis di Cargo.lock
     cargo build --release --locked
 }
 
 package() {
-    cd "${pkgname}"
+    cd "${pkgname}-${pkgver}"
+    
+    # Install binary crush ke /usr/bin/
     install -Dm755 "target/release/${pkgname}" "${pkgdir}/usr/bin/${pkgname}"
+    
+    # Wajib untuk Arch Linux: Install file lisensi MIT
+    install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
-
-# build() {
-#     cd "${pkgname}-${pkgver}"
-#     cargo build --release --locked
-# }
-
-# package() {
-#     cd "${pkgname}-${pkgver}"
-    # Pastikan nama binary dari Cargo.toml memang 'crush' (huruf kecil)
-#     install -Dm755 "target/release/${pkgname}" "${pkgdir}/usr/bin/${pkgname}"
-# }
