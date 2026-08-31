@@ -9,42 +9,29 @@ syntax_highlighting = true
 
 [startup]
 commands = [
-    # "cat ~/.local/state/quickshell/user/generated/terminal/sequences.txt",
     "clear",
-    "fastfetch",
-    "echo 'Добро пожаловать в crush. Система под контролем Архитектора.'"
+    "echo 'Welcome to crush shell!'"
 ]
 
 [env]
-EDITOR = "nvim"
-VISUAL = "nvim"
+EDITOR = "nano"
+VISUAL = "nano"
 LANG = "en_US.UTF-8"
 PATH = [
-    "~/.cargo/bin",
     "~/.local/bin",
-    "~/Templates/TUI/crush/target/release"
+    "~/bin"
 ]
 
 [aliases]
-pamcan = "pacman"
-mon = "sudo mount -o ro /dev/sdb3 /mnt/ssd"
-umon = "sudo umount /mnt/ssd"
-ssh = "kitten ssh"
+ll = "ls -al"
+la = "ls -a"
+.. = "cd .."
+... = "cd ../.."
+g = "git"
 
 # Quick Aliases
-a = "antigravity-ide ."
-b = "btop"
-c = "code ."
-d = "thunar ."
-f = "clear && fastfetch"
-g = "grep -Rin"
-l = "clear"
-m = "unimatrix -c magenta -u \"♩♪♫♬♭♮♯\" -s 96"
-n = "nvim"
-p = "ping -c 4"
+c = "clear"
 q = "exit"
-s = "systemctl poweroff"
-z = "zellij --layout dev"
 
 [bindings]
 "Ctrl+L" = "clear_screen"
@@ -60,12 +47,11 @@ fuzzy_search = true
 inline_suggestions = true
 
 [dir_aliases]
-# work if user exec cd ~crush or ~crush/src, nvim ~crush/src/main.rs, and other command
-crush = "~/Rust/crush"
-coda = "~/Rust/coda"
-niri = "~/.config/niri"
-cfg = "~/.config/crush"
+# work if user exec cd ~config, nvim ~config/crush.toml, and other command
+config = "~/.config/crush"
 dl = "~/Downloads"
+doc = "~/Documents"
+pic = "~/Pictures"
 
 [hooks]
 # Auto after command run
@@ -73,7 +59,7 @@ on_cd = "ls"
 
 # Auto before command run
 pre_command = ""
-pre_fastfetch = "clear"
+on_clear = ""
 
 [history]
 max_entries = 10000
@@ -113,7 +99,7 @@ body = """
 if [ -z "$WAYLAND_DISPLAY" ]
     niri
 else
-    echo "Peringatan: Niri sudah berjalan, Arsitek!"
+    echo "Peringatan: Niri sudah berjalan!"
 end
 """
 

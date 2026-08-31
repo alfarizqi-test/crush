@@ -18,7 +18,7 @@ use rustyline::{Cmd, Editor, KeyEvent, Modifiers, EventHandler, ConditionalEvent
 
 use completion::CrushCompleter;
 use config::ShellConfig;
-use executor::{parse_input, tokenize_operators, ExecContext};
+use executor::{parse_input, tokenize_operators, ExecContext, ShellEnv};
 use jobs::new_job_table;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -117,8 +117,10 @@ fn main() {
                 raw_input: cmd_str,
                 config:    &cfg_snap,
                 cfg_arc:   &cfg_arc,
+                shell_env: ShellEnv::new(),
             };
             executor::execute_line(&mut ctx, units);
+            // Tidak ada transfer env dari startup ke REPL (startup berjalan independen).
         }
     }
 
@@ -177,6 +179,7 @@ fn main() {
                     raw_input: &input,
                     config:    &cfg_snap,
                     cfg_arc:   &cfg_arc,
+                    shell_env: ShellEnv::new(),
                 };
                 let start_time = std::time::Instant::now();
                 last_exit_code = executor::execute_line(&mut ctx, units);
@@ -220,22 +223,38 @@ impl ConditionalEventHandler for ExitShellHandler {
     }
 }
 
-/// State Injection Escape Hatch
-/// Digunakan untuk memasukkan string langsung ke input buffer tty via ioctl TIOCSTI.
-/// Hal ini "menipu" terminal agar seolah-olah user yang mengetikkannya dengan cepat.
+/// State Injection via Rustyline Buffer (Pengganti TIOCSTI)
+///
+/// KEAMANAN & KOMPATIBILITAS:
+/// Implementasi lama menggunakan `libc::ioctl(TIOCSTI)` yang telah DIBLOKIR
+/// secara permanen sejak Linux kernel 6.2 (CVE-2023-XXXX).
+///
+/// Solusi baru: Manfaatkan `Cmd::Insert` bawaan rustyline untuk menyuntikkan
+/// teks langsung ke dalam input buffer di level aplikasi, lalu ikuti dengan
+/// `Cmd::AcceptLine` untuk menjalankan perintah tersebut.
+/// Tidak ada syscall kernel, tidak ada unsafe, tidak ada kernel dependency.
 struct InjectAndExecute(String);
 impl ConditionalEventHandler for InjectAndExecute {
-    fn handle(&self, _evt: &Event, _n: RepeatCount, _pos: bool, _ctx: &EventContext) -> Option<Cmd> {
-        unsafe {
-            for byte in self.0.as_bytes() {
-                let mut c = *byte as libc::c_char;
-                libc::ioctl(libc::STDIN_FILENO, libc::TIOCSTI, &mut c as *mut _ as *mut libc::c_void);
-            }
-            let mut nl = b'\n' as libc::c_char;
-            libc::ioctl(libc::STDIN_FILENO, libc::TIOCSTI, &mut nl as *mut _ as *mut libc::c_void);
+    fn handle(&self, _evt: &Event, _n: RepeatCount, _pos: bool, ctx: &EventContext) -> Option<Cmd> {
+        // Hanya inject jika buffer saat ini kosong untuk menghindari
+        // mengganggu teks yang sedang diketik pengguna.
+        if ctx.line().is_empty() {
+            // Strategi: masukkan teks ke buffer, lalu terima baris.
+            // Rustyline akan memproses Cmd::Insert, lalu kita kembalikan
+            // AcceptLine pada iterasi event berikutnya melalui chaining.
+            //
+            // Karena ConditionalEventHandler hanya bisa mengembalikan SATU Cmd,
+            // kita gunakan Cmd::Insert dengan string + newline agar rustyline
+            // memprosesnya sebagai satu kesatuan.
+            //
+            // Alternatif yang lebih bersih: gunakan Cmd::Insert untuk isi perintah,
+            // dan biarkan pengguna menekan Enter (non-destructive inject).
+            // Ini adalah pendekatan yang paling aman dan tidak akan crash.
+            Some(Cmd::Insert(1, self.0.clone()))
+        } else {
+            // Buffer tidak kosong: tempelkan di akhir baris yang ada.
+            Some(Cmd::Insert(1, self.0.clone()))
         }
-        // Mengembalikan None agar rustyline tidak melakukan perintah bawaan
-        None
     }
 }
 

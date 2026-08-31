@@ -15,6 +15,7 @@
 //   • Baris biasa → executor::execute_line
 //   • Komentar (#)
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::process::Command;
 use serde::Deserialize;
@@ -124,7 +125,8 @@ fn run_block(
                 {
                     run_cmd_substitution(cmd_expr, locals, args)
                 } else {
-                    expand_vars(val_raw, locals, args)
+                    // Cow: hanya alokasi jika ada variabel yang perlu diexpand
+                    expand_vars(val_raw, locals, args).into_owned()
                 };
                 locals.insert(var, value);
             }
@@ -133,6 +135,7 @@ fn run_block(
 
         // ── if COND ────────────────────────────────────────────────────────────
         if let Some(cond_raw) = raw.strip_prefix("if ") {
+            // expand_vars mengembalikan Cow: borrowed jika tidak ada '$', owned jika ada.
             let cond_expanded = expand_vars(cond_raw, locals, args);
             let cond_result   = evaluate_condition(&cond_expanded);
 
@@ -164,6 +167,7 @@ fn run_block(
         if raw == "end" { continue; }
 
         // ── Perintah biasa ─────────────────────────────────────────────────────
+        // Cow: jika baris tidak mengandung '$', tidak ada alokasi sama sekali.
         let expanded = expand_vars(raw, locals, args);
 
         // Guard khusus: skip `cd ""` agar tidak error "No such file or directory"
@@ -190,15 +194,24 @@ fn run_block(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Expand $args, $0..$9, $var_name, $VAR_NAME (env) dalam sebuah string.
-pub fn expand_vars(
-    s:      &str,
+///
+/// Zero-copy path: jika `s` tidak mengandung `$` sama sekali, dikembalikan
+/// langsung sebagai `Cow::Borrowed` tanpa alokasi heap apapun.
+/// Hanya ketika ada variabel yang perlu diexpand barulah `Cow::Owned` dialokasikan.
+pub fn expand_vars<'a>(
+    s:      &'a str,
     locals: &HashMap<String, String>,
     _args:  &[&str],
-) -> String {
-    let mut out = String::with_capacity(s.len() + 16);
-    let mut chars = s.chars().peekable();
+) -> Cow<'a, str> {
+    // Fast-path: tidak ada '$' → tidak perlu alokasi sama sekali.
+    if !s.contains('$') {
+        return Cow::Borrowed(s);
+    }
 
-    while let Some(ch) = chars.next() {
+    let mut out = String::with_capacity(s.len() + 16);
+    let mut chars = s.char_indices().peekable();
+
+    while let Some((_, ch)) = chars.next() {
         if ch != '$' {
             out.push(ch);
             continue;
@@ -206,7 +219,7 @@ pub fn expand_vars(
 
         // Kumpulkan nama variabel (alfanumerik + _)
         let mut name = String::new();
-        while let Some(&c) = chars.peek() {
+        while let Some(&(_, c)) = chars.peek() {
             if c.is_alphanumeric() || c == '_' {
                 name.push(c);
                 chars.next();
@@ -221,14 +234,14 @@ pub fn expand_vars(
         }
 
         // Prioritas: locals → env
-        let value = if let Some(v) = locals.get(&name) {
-            v.clone()
-        } else {
-            std::env::var(&name).unwrap_or_default()
-        };
-        out.push_str(&value);
+        if let Some(v) = locals.get(&name) {
+            out.push_str(v);
+        } else if let Ok(v) = std::env::var(&name) {
+            out.push_str(&v);
+        }
+        // Variabel tidak ditemukan → ekspansi jadi string kosong (perilaku POSIX)
     }
-    out
+    Cow::Owned(out)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -240,8 +253,8 @@ fn run_cmd_substitution(
     locals:   &HashMap<String, String>,
     _args:    &[&str],
 ) -> String {
-    // Expand variables (lokals + env) di dalam cmd_expr
-    // Note: _args sudah dimasukkan ke locals sebelum dipanggil, jadi aman
+    // Expand variables (lokals + env) di dalam cmd_expr.
+    // expand_vars mengembalikan Cow: tidak alokasi jika cmd_expr tidak mengandung '$'.
     let expanded = expand_vars(cmd_expr, locals, &[]);
     let tokens = match shlex::split(&expanded) {
         Some(t) if !t.is_empty() => t,
@@ -259,17 +272,22 @@ fn run_cmd_substitution(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Condition evaluator — subset POSIX test
+// Condition evaluator — native POSIX test (tanpa sh -c)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Evaluasi kondisi untuk blok `if`.
-/// Mendukung:
-///   [ "$a" = "$b" ]    — string equality
-///   [ "$a" != "$b" ]   — string inequality
-///   [ -z "$a" ]        — empty string
-///   [ -n "$a" ]        — non-empty string
-///   [ -f "$path" ]     — file exists
-///   [ -d "$path" ]     — directory exists
+/// Evaluasi kondisi untuk blok `if` secara NATIVE — tidak pernah memanggil shell
+/// eksternal, sehingga tidak ada risiko command injection.
+///
+/// Mendukung subset POSIX test:
+///   [ -z "$a" ]       — string kosong
+///   [ -n "$a" ]       — string tidak kosong
+///   [ -f "$path" ]    — regular file ada
+///   [ -d "$path" ]    — direktori ada
+///   [ -e "$path" ]    — path (file/dir) ada
+///   [ "$a" = "$b" ]   — string equality
+///   [ "$a" != "$b" ]  — string inequality
+///
+/// Kondisi yang tidak dikenali dikembalikan `false` (bukan di-forward ke sh).
 fn evaluate_condition(cond: &str) -> bool {
     let inner = cond.trim();
 
@@ -280,32 +298,31 @@ fn evaluate_condition(cond: &str) -> bool {
         inner
     };
 
-    // Tokenize
+    // Tokenize sederhana: pisah berdasarkan whitespace.
+    // Catatan: setelah expand_vars dipanggil di atas, nilai variabel sudah
+    // disubstitusi sehingga token di sini sudah siap dipakai langsung.
     let tokens: Vec<&str> = inner.split_whitespace().collect();
 
     match tokens.as_slice() {
-        // [ -z "str" ]
+        // [ -z "str" ] — true jika string kosong
         ["-z", val] => strip_quotes(val).is_empty(),
-        // [ -n "str" ]
+        // [ -n "str" ] — true jika string tidak kosong
         ["-n", val] => !strip_quotes(val).is_empty(),
-        // [ -f "path" ]
+        // [ -f "path" ] — true jika path adalah regular file
         ["-f", path] => std::path::Path::new(strip_quotes(path)).is_file(),
-        // [ -d "path" ]
+        // [ -d "path" ] — true jika path adalah direktori
         ["-d", path] => std::path::Path::new(strip_quotes(path)).is_dir(),
-        // [ -e "path" ]
+        // [ -e "path" ] — true jika path ada (file atau dir)
         ["-e", path] => std::path::Path::new(strip_quotes(path)).exists(),
-        // [ "a" = "b" ]
+        // [ "a" = "b" ] — string equality
         [a, "=", b]  => strip_quotes(a) == strip_quotes(b),
-        // [ "a" != "b" ]
+        // [ "a" != "b" ] — string inequality
         [a, "!=", b] => strip_quotes(a) != strip_quotes(b),
-        // Fallback: jalankan sebagai perintah shell dan cek exit code
+        // Kondisi tidak dikenal: kembalikan false secara aman.
+        // KEAMANAN: fallback sh -c DIHAPUS untuk mencegah command injection.
         _ => {
-            Command::new("sh")
-                .arg("-c")
-                .arg(inner)
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false)
+            eprintln!("crush: wrapper: kondisi tidak didukung: {:?}", inner);
+            false
         }
     }
 }
