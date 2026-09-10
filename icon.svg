@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="512" height="512">
+  <defs>
+    <style>
+      /* Animasi kursor terminal berkedip */
+      @keyframes blink {
+        0%, 49% { opacity: 1; }
+        50%, 100% { opacity: 0; }
+      }
+      .cursor {
+        animation: blink 1.2s infinite;
+      }
+      /* Gaya Font Monospace bergaya Hacker */
+      .prompt-text {
+        font-family: 'JetBrains Mono', 'Fira Code', 'Iosevka', 'Cascadia Code', monospace;
+        font-size: 92px;
+        font-weight: 900;
+        text-anchor: middle;
+        dominant-baseline: central;
+      }
+    </style>
+    
+    <!-- Efek cahaya (Glow) khas Catppuccin -->
+    <filter id="neon-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Latar Belakang Squircle: Catppuccin Mantle dengan garis tepi Surface0 -->
+  <rect x="16" y="16" width="224" height="224" rx="56" fill="#181825" stroke="#313244" stroke-width="4" />
+
+  <!-- Teks Prompt -->
+  <!-- &lt; adalah kode HTML/SVG aman untuk tanda '<' -->
+  <text x="128" y="128" class="prompt-text" filter="url(#neon-glow)" letter-spacing="-6">
+    <!-- Hati: Catppuccin Red -->
+    <tspan fill="#f38ba8">&lt;3</tspan>
+    <!-- Kursor: Catppuccin Peach -->
+    <tspan x="185" fill="#fab387" class="cursor">_</tspan>
+  </text>
+</svg>

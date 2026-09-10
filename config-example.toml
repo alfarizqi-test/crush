@@ -3,8 +3,11 @@
 # ==========================================
 
 [shell]
+# Whether to show the welcome greeting message on startup
 show_greeting = true
+# Add an empty line before each prompt for better readability
 add_newline_before_prompt = false
+# Enable or disable syntax highlighting for the command line input
 syntax_highlighting = true
 
 [startup]
@@ -25,8 +28,6 @@ PATH = [
 [aliases]
 ll = "ls -al"
 la = "ls -a"
-.. = "cd .."
-... = "cd ../.."
 g = "git"
 
 # Quick Aliases
@@ -34,6 +35,17 @@ c = "clear"
 q = "exit"
 
 [bindings]
+# Available actions for key bindings:
+# - "clear_screen"   : Clears the terminal screen
+# - "search_history" : Opens reverse history search
+# - "exit_shell"     : Exits crush shell
+# - "accept_line"    : Equivalent to pressing Enter
+# - "move_home"      : Move cursor to the beginning of the line
+# - "move_end"       : Move cursor to the end of the line
+# - "complete_hint"  : Accept inline autocomplete hint
+# - "complete_list"  : Show completion suggestions list
+# - "execute: <cmd>" : Immediately inject and run a command
+
 "Ctrl+L" = "clear_screen"
 "Ctrl+R" = "search_history"
 "Ctrl+D" = "exit_shell"

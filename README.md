@@ -62,10 +62,11 @@ Crush is configured via a TOML file, typically located in your configuration dir
 
 A comprehensive `config-example.toml` is provided in the repository. Key sections include:
 
+- `[shell]`: Core shell behavior settings (e.g., greeting, newline before prompt).
 - `[env]`: Set environment variables like `EDITOR` or `PATH`.
 - `[aliases]`: Define quick command aliases.
 - `[dir_aliases]`: Define directory shortcuts.
-- `[bindings]`: Map key combinations to actions (e.g., `"Ctrl+L" = "clear_screen"`).
+- `[bindings]`: Map key combinations to actions. Available actions are: `clear_screen`, `search_history`, `exit_shell`, `accept_line`, `move_home`, `move_end`, `complete_hint`, `complete_list`, and `execute: <cmd>`. (e.g., `"Ctrl+L" = "clear_screen"`).
 - `[prompt]`: Customize your prompt layout, symbols, and colors.
 - `[functions.<name>]`: Create wrapper scripts and custom commands in TOML.
 
