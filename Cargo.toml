@@ -11,7 +11,7 @@ rustyline  = { version = "18.0.1", default-features = false, features = ["with-f
 serde      = { version = "1.0", default-features = false, features = ["derive"] }
 shlex      = "2.0.1"
 thiserror  = "2.0.18"
-toml       = { version = "0.8", default-features = false, features = ["parse"] }
+basic-toml = "0.1"
 which      = "8.0.4"
 
 [profile.release]

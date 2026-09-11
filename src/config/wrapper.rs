@@ -42,20 +42,18 @@ pub struct WrapperConfig {
 // Loading dari raw TOML value
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Intermediate struct untuk deserialize raw config yang berisi [functions]
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct RawConfig {
+    functions: HashMap<String, WrapperFunction>,
+}
+
 impl WrapperConfig {
-    /// Parse [functions] dari raw toml::Table yang sudah dibaca.
-    pub fn from_toml(table: &toml::Table) -> Self {
-        let mut functions = HashMap::new();
-
-        if let Some(toml::Value::Table(funcs)) = table.get("functions") {
-            for (name, val) in funcs {
-                if let Ok(func) = val.clone().try_into::<WrapperFunction>() {
-                    functions.insert(name.clone(), func);
-                }
-            }
-        }
-
-        Self { functions }
+    /// Parse [functions] dari raw TOML string.
+    pub fn from_str(content: &str) -> Self {
+        let raw: RawConfig = basic_toml::from_str(content).unwrap_or_default();
+        Self { functions: raw.functions }
     }
 
     /// Kembalikan function jika nama cocok, atau None.

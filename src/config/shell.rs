@@ -54,6 +54,56 @@ pub struct StartupSection {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Wrapper untuk nilai env yang bisa berupa tipe TOML apapun (string, integer,
+/// float, bool). Table dan array diabaikan (disimpan sebagai None).
+/// Diperlukan karena basic-toml tidak mengekspos tipe Value secara publik.
+#[derive(Debug, Clone)]
+pub struct EnvVal(pub Option<String>);
+
+impl<'de> serde::Deserialize<'de> for EnvVal {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::{IgnoredAny, MapAccess, SeqAccess, Visitor};
+        use std::fmt;
+
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = EnvVal;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "any TOML value")
+            }
+            // Tipe scalar → konversi ke String
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<EnvVal, E> {
+                Ok(EnvVal(Some(v.to_owned())))
+            }
+            fn visit_string<E: serde::de::Error>(self, v: String) -> Result<EnvVal, E> {
+                Ok(EnvVal(Some(v)))
+            }
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<EnvVal, E> {
+                Ok(EnvVal(Some(v.to_string())))
+            }
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<EnvVal, E> {
+                Ok(EnvVal(Some(v.to_string())))
+            }
+            fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<EnvVal, E> {
+                Ok(EnvVal(Some(v.to_string())))
+            }
+            fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<EnvVal, E> {
+                Ok(EnvVal(Some(v.to_string())))
+            }
+            // Table dan array → abaikan, simpan None
+            fn visit_map<A: MapAccess<'de>>(self, mut m: A) -> Result<EnvVal, A::Error> {
+                while m.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
+                Ok(EnvVal(None))
+            }
+            fn visit_seq<A: SeqAccess<'de>>(self, mut s: A) -> Result<EnvVal, A::Error> {
+                while s.next_element::<IgnoredAny>()?.is_some() {}
+                Ok(EnvVal(None))
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
+
 /// [env] section: nilai bisa berupa String atau Vec<String> (untuk PATH)
 #[derive(Debug, Deserialize, Clone, Default)]
 #[serde(default)]
@@ -71,9 +121,9 @@ pub struct EnvSection {
     #[serde(rename = "PATH")]
     pub path_extra: Vec<String>,
 
-    /// Semua env lain yang tidak dikenal (key-value bebas)
+    /// Semua env lain yang tidak dikenal (key-value bebas, tipe apapun)
     #[serde(flatten)]
-    pub extra: HashMap<String, toml::Value>,
+    pub extra: HashMap<String, EnvVal>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -183,17 +233,12 @@ impl ShellConfig {
     pub fn load_from(path: &Path) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
 
-        // Parse sebagai raw toml::Table untuk dua tujuan:
-        //   1. Deserialize bagian shell via serde
-        //   2. Extract [functions.*] manual via WrapperConfig::from_toml
-        let table: toml::Table = toml::from_str(&content)?;
+        // Parse ShellConfig langsung via serde
+        let mut cfg: ShellConfig = basic_toml::from_str(&content)
+            .map_err(|e| anyhow::anyhow!(e))?;
 
-        let mut cfg: ShellConfig = toml::Value::Table(table.clone())
-            .try_into()
-            .map_err(|e: toml::de::Error| anyhow::anyhow!(e))?;
-
-        // Load functions section
-        cfg.functions = WrapperConfig::from_toml(&table);
+        // Parse WrapperConfig dari raw string terpisah
+        cfg.functions = WrapperConfig::from_str(&content);
 
         Ok(cfg)
     }
@@ -268,13 +313,14 @@ impl ShellConfig {
                 std::env::set_var("PATH", &combined);
             }
 
-            // Extra env vars (toml::Value::String only; skip table/array)
+            // Extra env vars (semua scalar TOML: string, int, float, bool)
+            // EnvVal::None = table/array, dilewati
             for (k, v) in &self.env.extra {
                 // Hindari override PATH/EDITOR/VISUAL/LANG yang sudah ditangani
                 match k.as_str() {
                     "EDITOR" | "VISUAL" | "LANG" | "PATH" => {}
                     _ => {
-                        if let toml::Value::String(s) = v {
+                        if let Some(s) = &v.0 {
                             std::env::set_var(k, s);
                         }
                     }
