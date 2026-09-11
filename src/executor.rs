@@ -21,10 +21,9 @@ use crate::jobs::SharedJobTable;
 use crate::config::ShellConfig;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tipe data internal
+// Internal Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Representasi satu segmen perintah (sudah dipisah dari pipeline/&&/||)
 #[derive(Debug)]
 pub struct Segment {
     pub args:        Vec<String>,
@@ -39,15 +38,13 @@ pub struct Redirect {
     pub append: bool,
 }
 
-/// Operator antara dua segmen dalam sebuah perintah gabungan
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Op {
-    Pipe,      // |
-    And,       // &&
-    Or,        // ||
+    Pipe,
+    And,
+    Or,
 }
 
-/// Satu unit eksekusi: segmen + operator yang mengikutinya
 #[derive(Debug)]
 pub struct Unit {
     pub segment: Segment,
@@ -58,7 +55,6 @@ pub struct Unit {
 // Parsing
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Parse seluruh baris input menjadi Vec<Unit> yang siap dieksekusi.
 pub fn parse_input(tokens: &[&str]) -> Vec<Unit> {
     let mut units: Vec<Unit> = Vec::new();
     let mut current_tokens: Vec<&str> = Vec::new();
@@ -67,13 +63,7 @@ pub fn parse_input(tokens: &[&str]) -> Vec<Unit> {
     while i < tokens.len() {
         let t = tokens[i];
         match t {
-            // Pipeline
             "|" => {
-                // Pastikan bukan "||"
-                if i + 1 < tokens.len() && tokens[i + 1] == "|" {
-                    // Ini seharusnya sudah ditangani sebagai "||" oleh tokenizer
-                    // Tapi shlex sudah memisahnya, jadi tangani di sini
-                }
                 if let Some(seg) = build_segment(&current_tokens) {
                     units.push(Unit { segment: seg, op: Some(Op::Pipe) });
                 }
@@ -98,7 +88,6 @@ pub fn parse_input(tokens: &[&str]) -> Vec<Unit> {
         i += 1;
     }
 
-    // Sisa token
     if !current_tokens.is_empty() {
         if let Some(seg) = build_segment(&current_tokens) {
             units.push(Unit { segment: seg, op: None });
@@ -108,7 +97,6 @@ pub fn parse_input(tokens: &[&str]) -> Vec<Unit> {
     units
 }
 
-/// Bangun Segment dari kumpulan token (termasuk deteksi redirection & &)
 fn build_segment(tokens: &[&str]) -> Option<Segment> {
     if tokens.is_empty() { return None; }
 
@@ -163,36 +151,24 @@ fn build_segment(tokens: &[&str]) -> Option<Segment> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Pre-processing: tokenize dengan memecah ||, &&, | dengan benar
+// Pre-processing
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Tokenize dengan memisahkan operator shell dari token biasa.
-/// shlex sudah memisahkan kata, tapi tidak memisahkan &&, ||, |.
-///
-/// Optimasi alokasi: token yang TIDAK mengandung operator dikembalikan
-/// langsung dari input aslinya tanpa alokasi baru.
 pub fn tokenize_operators(raw_tokens: Vec<String>) -> Vec<String> {
-    // Operator yang perlu dipisah (urutan: lebih panjang dulu)
     const OPS: &[&str] = &["&&", "||", "|"];
 
     let mut result: Vec<String> = Vec::with_capacity(raw_tokens.len());
     for tok in raw_tokens {
-        // Fast-path: jika token tidak mengandung operator sama sekali,
-        // push langsung tanpa alokasi tambahan.
         if !OPS.iter().any(|op| tok.contains(op)) {
             result.push(tok);
             continue;
         }
-        // Slow-path: ada operator yang perlu dipecah.
         let expanded = split_operators_cow(&tok);
         result.extend(expanded);
     }
     result
 }
 
-/// Pecah token yang mengandung operator shell.
-/// Kembalikan Vec<String> agar tidak ada lifetime issue dari Cow yang
-/// meminjam local variable.
 fn split_operators_cow(s: &str) -> Vec<String> {
     const OPS: &[&str] = &["&&", "||", "|"];
     let mut result: Vec<String> = vec![s.to_string()];
@@ -204,11 +180,9 @@ fn split_operators_cow(s: &str) -> Vec<String> {
                 continue;
             }
             if let Some(idx) = part.find(op) {
-                // left dan right diekstrak sebagai String baru.
                 let left  = part[..idx].to_string();
                 let right = part[idx + op.len()..].to_string();
                 if !left.is_empty()  { new_result.push(left); }
-                // Operator: gunakan str literal untuk menjaga string heap seminimal mungkin.
                 new_result.push(op.to_string());
                 if !right.is_empty() { new_result.extend(split_operators_cow(&right)); }
             } else {
@@ -246,17 +220,10 @@ pub fn expand_tilde(path: &str) -> String {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Shell Environment State — pengganti global unsafe env::set_var
+// Shell Environment State
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Penyimpanan variabel environment lokal untuk sesi shell ini.
-///
-/// KEAMANAN: Menggantikan `unsafe { env::set_var(...) }` yang berisiko
-/// Undefined Behavior di Rust modern (terutama di lingkungan multi-threaded).
-/// Variabel disimpan di HashMap lokal dan diinjeksikan ke child process via
-/// `.envs()` sehingga perubahan tidak pernah menyentuh global state OS.
 pub struct ShellEnv {
-    /// Overrides lokal: variabel yang di-set via `export` atau `cd`.
     overrides: HashMap<String, String>,
 }
 
@@ -265,17 +232,9 @@ impl ShellEnv {
         Self { overrides: HashMap::new() }
     }
 
-    /// Set satu variabel. Juga update process environment agar child process
-    /// yang baru di-spawn bisa mewarisinya (melalui .envs() di spawn_process).
     pub fn set(&mut self, key: impl Into<String>, value: impl Into<String>) {
         let k = key.into();
         let v = value.into();
-        // Selain disimpan di map, kita TETAP update env global untuk kompatibilitas
-        // dengan `env::current_dir()` dan crate lain yang membaca env langsung.
-        // Ini aman karena crush adalah single-threaded (tidak ada tokio/rayon).
-        // Jika di masa depan ada threading, ganti ini dengan Arc<Mutex<HashMap>>.
-        // Penggunaan unsafe di sini dibatasi HANYA untuk menjaga kompatibilitas
-        // dengan API sistem, bukan untuk logika bisnis.
         #[allow(unused_unsafe)]
         unsafe { env::set_var(&k, &v); }
         self.overrides.insert(k, v);
@@ -287,7 +246,6 @@ impl ShellEnv {
         self.overrides.remove(key);
     }
 
-    /// Iterasi semua override untuk diinjeksikan ke child process.
     pub fn iter(&self) -> impl Iterator<Item = (&String, &String)> {
         self.overrides.iter()
     }
@@ -306,41 +264,32 @@ pub struct ExecContext<'a> {
     pub raw_input: &'a str,
     pub config:    &'a ShellConfig,
     pub cfg_arc:   &'a std::sync::Arc<std::sync::RwLock<ShellConfig>>,
-    /// Environment state lokal: hasil dari `export`, `cd`, dsb.
-    /// Diinjeksikan ke setiap child process via `.envs()`.
     pub shell_env: ShellEnv,
 }
 
 
-/// Jalankan satu baris input lengkap.
-/// Kembalikan last exit code.
 pub fn execute_line(ctx: &mut ExecContext<'_>, units: Vec<Unit>) -> i32 {
     if units.is_empty() { return 0; }
 
-    // Pisah units menjadi kelompok yang dihubungkan oleh pipe,
-    // dan chain &&/|| di antara kelompok-kelompok tersebut.
     let pipeline_groups = split_into_pipeline_groups(units);
     let mut last_code: i32 = 0;
     let mut skip_and = false;
     let mut skip_or  = false;
 
     for (group, trailing_op) in pipeline_groups {
-        // Evaluasi kondisi &&/||
+        // Evaluate &&/||
         if skip_and {
-            // Perintah sebelumnya gagal, && berikutnya dilewati
             if trailing_op == Some(Op::And) { skip_and = true; } else { skip_and = false; }
             last_code = 1;
             continue;
         }
         if skip_or {
-            // Perintah sebelumnya sukses, || berikutnya dilewati
             if trailing_op == Some(Op::Or) { skip_or = true; } else { skip_or = false; }
             continue;
         }
 
         last_code = execute_pipeline(ctx, group);
 
-        // Tentukan kondisi untuk unit berikutnya
         match trailing_op {
             Some(Op::And) => {
                 if last_code != 0 { skip_and = true; }
@@ -355,8 +304,7 @@ pub fn execute_line(ctx: &mut ExecContext<'_>, units: Vec<Unit>) -> i32 {
     last_code
 }
 
-/// Pisah Vec<Unit> menjadi pipeline group: setiap group = Vec<Segment> yang dihubungkan |
-type PipelineGroup = (Vec<Segment>, Option<Op>); // (segments, op setelah group ini)
+type PipelineGroup = (Vec<Segment>, Option<Op>);
 
 fn split_into_pipeline_groups(units: Vec<Unit>) -> Vec<PipelineGroup> {
     let mut groups: Vec<PipelineGroup> = Vec::new();
@@ -368,10 +316,8 @@ fn split_into_pipeline_groups(units: Vec<Unit>) -> Vec<PipelineGroup> {
 
         match op {
             Some(Op::Pipe) => {
-                // Lanjut kumpulkan pipeline
             }
             other => {
-                // Akhir dari pipeline group ini
                 groups.push((std::mem::take(&mut current_pipe), other));
             }
         }
@@ -394,7 +340,7 @@ fn execute_pipeline(ctx: &mut ExecContext<'_>, mut segments: Vec<Segment>) -> i3
         return execute_segment(ctx, segments.remove(0), None, None);
     }
 
-    // Multi-command pipeline: hubungkan stdin/stdout antar proses
+    // Multi-command pipeline
     let n = segments.len();
     let mut prev_stdout: Option<std::process::ChildStdout> = None;
     let mut children: Vec<Child> = Vec::new();
@@ -402,10 +348,6 @@ fn execute_pipeline(ctx: &mut ExecContext<'_>, mut segments: Vec<Segment>) -> i3
     for (i, seg) in segments.into_iter().enumerate() {
         let is_last = i == n - 1;
         let cmd_name = seg.args[0].clone();
-
-        // Jika builtin (echo) dalam pipeline — jalankan di thread terpisah
-        // agar bisa di-pipe; untuk simplisitas kita fork dan jalankan biasa.
-        // Builtin di tengah pipeline akan dilanjutkan sebagai external cmd.
 
         let stdin_source = prev_stdout.take().map(|s| Stdio::from(s));
         let stdout_dest = if is_last { None } else { Some(Stdio::piped()) };
@@ -425,14 +367,12 @@ fn execute_pipeline(ctx: &mut ExecContext<'_>, mut segments: Vec<Segment>) -> i3
             }
             Err(e) => {
                 eprintln!("{}: {}", cmd_name, e);
-                // Bersihkan yang sudah di-spawn
                 for mut c in children { c.wait().ok(); }
                 return 127;
             }
         }
     }
 
-    // Tunggu semua proses selesai; kembalikan exit code yang terakhir
     let mut last_code = 0;
     for mut child in children {
         if let Ok(status) = child.wait() {
@@ -454,7 +394,7 @@ fn execute_segment(
 ) -> i32 {
     if seg.args.is_empty() { return 0; }
 
-    // Expand variabel & tilde
+    // Expand variable & tilde
     let args: Vec<String> = seg.args.iter()
         .map(|a| expand_tilde(&expand_variables(a)))
         .collect();
@@ -463,8 +403,6 @@ fn execute_segment(
     let rest: Vec<&str> = args[1..].iter().map(|s| s.as_str()).collect();
 
     // ── Builtin dispatch ─────────────────────────────────────────────────────
-    // Builtin tidak bisa di-background dan harus di-foreground (kecuali jika
-    // di dalam pipeline; dalam kasus itu kita sudah di external mode di atas).
     match cmd {
         "exit" => {
             crate::history::save_history(ctx.rl);
@@ -527,9 +465,7 @@ fn execute_segment(
                 rest[0].to_string()
             };
 
-            // Resolve dir_alias DULU (sebelum expand_tilde), agar ~crush tetap ~name
             let after_alias = ctx.config.resolve_dir_alias(&raw_target);
-            // Kemudian baru expand_tilde
             let target = expand_tilde(&after_alias);
 
             if let Err(_) = env::set_current_dir(Path::new(&target)) {
@@ -537,7 +473,6 @@ fn execute_segment(
                 return 1;
             }
 
-            // Catat PWD baru di ShellEnv (aman, tanpa unsafe global mutation).
             if let Ok(current_path) = env::current_dir() {
                 ctx.shell_env.set("PWD", current_path.to_string_lossy().as_ref());
             }
@@ -568,10 +503,8 @@ fn execute_segment(
                 if let Some(eq) = kv.find('=') {
                     let k = &kv[..eq];
                     let v = &kv[eq+1..];
-                    // Simpan di ShellEnv lokal dan propagate ke env OS.
                     ctx.shell_env.set(k, v);
                 } else {
-                    // export NAME tanpa nilai: pastikan ada di env OS.
                     if env::var(kv).is_err() {
                         ctx.shell_env.set(kv, "");
                     }
@@ -600,7 +533,6 @@ fn execute_segment(
             return crate::ls::run(&rest);
         }
         "rehash" => {
-            // Refresh PATH di ShellEnv agar child process baru mendapat PATH terkini.
             if let Ok(path) = env::var("PATH") {
                 ctx.shell_env.set("PATH", &path);
             }
@@ -616,13 +548,10 @@ fn execute_segment(
             println!("crush: config reloaded successfully.");
             return 0;
         }
-        _ => {} // lanjut ke wrapper atau external command
+        _ => {}
     }
 
     // ── Wrapper function dispatch ─────────────────────────────────────────────
-    // Cek apakah cmd cocok dengan salah satu [functions.*] dari config.
-    // Ini harus dilakukan sebelum mencoba external command agar wrapper
-    // punya prioritas di atas binary dengan nama sama di $PATH.
     if let Some(func) = ctx.config.functions.get(cmd) {
         let func = func.clone();
         return crate::config::wrapper::execute_wrapper(&func, &rest, ctx);
@@ -649,7 +578,7 @@ fn execute_segment(
                 table.add(child, &label);
                 0
             } else {
-                // Foreground — tunggu
+                // Foreground wait
                 let mut child = child;
                 match child.wait() {
                     Ok(status) => status.code().unwrap_or(1),
@@ -689,9 +618,6 @@ fn spawn_process(
     let mut proc = Command::new(cmd);
     proc.args(&rest);
 
-    // Injeksikan semua variabel dari ShellEnv ke child process.
-    // Ini menggantikan set_var global: hanya child process ini yang melihat
-    // variabel-variabel tersebut; proses lain tidak terpengaruh.
     proc.envs(shell_env.iter());
 
     // Stdin
@@ -729,8 +655,6 @@ fn spawn_process(
 // Hook runner
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Jalankan satu string hook (on_cd, on_clear, pre_command) di dalam context saat ini.
-/// Hook adalah string perintah biasa yang di-tokenize dan dieksekusi.
 pub fn run_hook(hook: &str, ctx: &mut ExecContext<'_>) {
     let hook = hook.trim();
     if hook.is_empty() { return; }

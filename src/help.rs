@@ -1,6 +1,4 @@
-// help.rs — Menampilkan informasi lengkap shell crush
-//
-// Dipanggil via builtin: `help` atau `help <topic>`
+// help.rs - Shell help and documentation
 
 use std::io::{self, Write};
 use crate::history::history_path;
@@ -35,7 +33,7 @@ fn row2(key: &str, arg: &str, desc: &str) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Topik
+// Topics
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn print_banner() {
@@ -150,9 +148,9 @@ fn print_bindings() {
 
     println!();
     println!("    {}Ghost text suggestion:{}", WHITE, RST);
-    println!("    {}  Muncul otomatis saat mengetik — abu-abu redup di kanan kursor.{}", DIM, RST);
-    println!("    {}  Sumber: history (prioritas) → top completion candidate.{}", DIM, RST);
-    println!("    {}  Gunakan → atau Shift+Tab untuk menerimanya.{}", DIM, RST);
+    println!("    {}  Appears automatically while typing — dim gray to the right of cursor.{}", DIM, RST);
+    println!("    {}  Source: history (priority) → top completion candidate.{}", DIM, RST);
+    println!("    {}  Use → or Shift+Tab to accept it.{}", DIM, RST);
 }
 
 fn print_functions(cfg: &ShellConfig) {
@@ -180,7 +178,6 @@ fn print_functions(cfg: &ShellConfig) {
                 &func.description
             };
             row(name, desc);
-            // Tampilkan preview body (max 3 baris)
             let preview: Vec<&str> = func.body.lines()
                 .map(str::trim)
                 .filter(|l| !l.is_empty() && !l.starts_with('#'))
@@ -233,7 +230,7 @@ pub fn print_help(topic: Option<&str>, cfg: &ShellConfig) {
         }
         Some(unknown) => {
             eprintln!(
-                "help: topic '{}' tidak dikenal. Coba: {}help builtins{}, {}help bindings{}, {}help functions{}, {}help config{}",
+                "help: unknown topic '{}'. Try: {}help builtins{}, {}help bindings{}, {}help functions{}, {}help config{}",
                 unknown, GREEN, RST, GREEN, RST, GREEN, RST, GREEN, RST
             );
         }

@@ -1,18 +1,4 @@
-// config/prompt.rs — Builtin prompt engine (starship-like)
-//
-// Membaca section [prompt] dan [prompt.*] dari config.toml.
-//
-// STATUS: Struct definitions sudah lengkap, renderer belum diimplementasikan.
-//
-// Format string menggunakan variable expansion:
-//   $directory, $git_branch, $cmd_duration, $character, $username, $hostname
-//
-// Rencana sesi berikutnya:
-//   1. Renderer per-modul (fn render_directory(), fn render_git_branch(), dst)
-//   2. Format parser: pecah format string menjadi Vec<Segment>
-//   3. Integrasi dengan build_prompt() di main.rs
-//   4. Git status via std::process::Command("git", ["status", "--porcelain"])
-//   5. cmd_duration: ukur elapsed time per command
+// config/prompt.rs - Builtin prompt engine
 
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -70,7 +56,6 @@ impl Default for DirectorySection {
 #[derive(Debug, Deserialize, Clone)]
 #[serde(default)]
 pub struct CmdDurationSection {
-    /// Durasi minimum (ms) sebelum ditampilkan
     pub min_time: u64,
     pub format:   String,
 }
@@ -195,7 +180,6 @@ impl Default for HostnameSection {
 #[derive(Debug, Deserialize, Clone)]
 #[serde(default)]
 pub struct PromptConfig {
-    /// Format string utama prompt, menggunakan $module_name sebagai placeholder
     pub format:       String,
 
     pub character:    CharacterSection,
@@ -210,7 +194,6 @@ pub struct PromptConfig {
 impl Default for PromptConfig {
     fn default() -> Self {
         Self {
-            // Format sederhana default — akan di-override dari config.toml
             format:       "$directory$git_branch\n$character".into(),
             character:    Default::default(),
             directory:    Default::default(),

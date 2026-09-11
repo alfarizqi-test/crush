@@ -1,20 +1,4 @@
-// config/shell.rs — Main shell configuration
-//
-// Membaca dari:
-//   1. ~/.config/crush/config.toml        (user config, prioritas utama)
-//   2. <workspace>/src/config-example.toml (dev fallback saat debugging)
-//
-// Sections:
-//   [shell]      — greeting, syntax_highlighting, add_newline
-//   [startup]    — perintah yang dijalankan saat shell dimulai
-//   [env]        — variabel environment (termasuk PATH extension)
-//   [aliases]    — alias perintah
-//   [bindings]   — keybinding (Ctrl+L, Ctrl+R, dll) — applied ke rustyline
-//   [completion] — opsi completion engine
-//   [dir_aliases]— alias direktori untuk cd
-//   [hooks]      — on_cd, on_clear, pre_command
-//   [history]    — max_entries, ignore_space, ignore_dups, timestamp_format
-//   [theme]      — warna command valid/invalid/string
+// config/shell.rs - Main shell configuration
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -48,15 +32,11 @@ impl Default for ShellSection {
 #[derive(Debug, Deserialize, Clone, Default)]
 #[serde(default)]
 pub struct StartupSection {
-    /// Daftar perintah shell yang dijalankan saat crush pertama kali dimulai.
     pub commands: Vec<String>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Wrapper untuk nilai env yang bisa berupa tipe TOML apapun (string, integer,
-/// float, bool). Table dan array diabaikan (disimpan sebagai None).
-/// Diperlukan karena basic-toml tidak mengekspos tipe Value secara publik.
 #[derive(Debug, Clone)]
 pub struct EnvVal(pub Option<String>);
 
@@ -71,7 +51,6 @@ impl<'de> serde::Deserialize<'de> for EnvVal {
             fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 write!(f, "any TOML value")
             }
-            // Tipe scalar → konversi ke String
             fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<EnvVal, E> {
                 Ok(EnvVal(Some(v.to_owned())))
             }
@@ -90,7 +69,6 @@ impl<'de> serde::Deserialize<'de> for EnvVal {
             fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<EnvVal, E> {
                 Ok(EnvVal(Some(v.to_string())))
             }
-            // Table dan array → abaikan, simpan None
             fn visit_map<A: MapAccess<'de>>(self, mut m: A) -> Result<EnvVal, A::Error> {
                 while m.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
                 Ok(EnvVal(None))
@@ -104,7 +82,6 @@ impl<'de> serde::Deserialize<'de> for EnvVal {
     }
 }
 
-/// [env] section: nilai bisa berupa String atau Vec<String> (untuk PATH)
 #[derive(Debug, Deserialize, Clone, Default)]
 #[serde(default)]
 pub struct EnvSection {
@@ -117,11 +94,9 @@ pub struct EnvSection {
     #[serde(rename = "LANG")]
     pub lang: Option<String>,
 
-    /// PATH extensions: di-prepend ke PATH yang ada, tiap entry di-expand ~
     #[serde(rename = "PATH")]
     pub path_extra: Vec<String>,
 
-    /// Semua env lain yang tidak dikenal (key-value bebas, tipe apapun)
     #[serde(flatten)]
     pub extra: HashMap<String, EnvVal>,
 }
@@ -141,11 +116,8 @@ pub struct CompletionSection {
 #[derive(Debug, Deserialize, Clone, Default)]
 #[serde(default)]
 pub struct HooksSection {
-    /// Perintah yang dijalankan setiap kali cd berhasil (string kosong = nonaktif)
     pub on_cd:       String,
-    /// Perintah yang dijalankan setelah clear (string kosong = nonaktif)
     pub on_clear:    String,
-    /// Perintah yang dijalankan sebelum setiap command (string kosong = nonaktif)
     pub pre_command: String,
 }
 
@@ -202,22 +174,18 @@ pub struct ShellConfig {
     pub startup:     StartupSection,
     pub env:         EnvSection,
 
-    /// [aliases] — map nama → string perintah
     pub aliases:     HashMap<String, String>,
 
-    /// [bindings] — map "Ctrl+L" → action string
     pub bindings:    HashMap<String, String>,
 
     pub completion:  CompletionSection,
 
-    /// [dir_aliases] — map nama → path (~ akan di-expand)
     pub dir_aliases: HashMap<String, String>,
 
     pub hooks:       HooksSection,
     pub history:     HistorySection,
     pub theme:       ThemeSection,
 
-    /// [functions.*] — wrapper functions (skip serde, diisi manual)
     #[serde(skip)]
     pub functions:   WrapperConfig,
 
@@ -229,24 +197,17 @@ pub struct ShellConfig {
 // ─────────────────────────────────────────────────────────────────────────────
 
 impl ShellConfig {
-    /// Load config dari path tertentu.
     pub fn load_from(path: &Path) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
 
-        // Parse ShellConfig langsung via serde
         let mut cfg: ShellConfig = basic_toml::from_str(&content)
             .map_err(|e| anyhow::anyhow!(e))?;
 
-        // Parse WrapperConfig dari raw string terpisah
         cfg.functions = WrapperConfig::from_str(&content);
 
         Ok(cfg)
     }
 
-    /// Load config dengan strategi fallback:
-    ///   1. ~/.config/crush/config.toml
-    ///   2. <workspace>/src/config-example.toml  (dev mode)
-    ///   3. Default kosong jika tidak ada file
     pub fn load() -> Self {
         let user_path = super::config_path();
 
@@ -262,7 +223,6 @@ impl ShellConfig {
             }
         }
 
-        // Dev fallback: pakai config-example.toml
         if let Some(example_path) = super::example_config_path() {
             if example_path.exists() {
                 match Self::load_from(&example_path) {
@@ -285,11 +245,8 @@ impl ShellConfig {
 
     // ── Applicators ────────────────────────────────────────────────────────────
 
-    /// Terapkan [env] ke environment proses saat ini.
-    /// PATH entries di-prepend (bukan replace).
     pub fn apply_env(&self) {
         unsafe {
-            // Field yang dikenal
             if let Some(ref v) = self.env.editor {
                 std::env::set_var("EDITOR", v);
             }
@@ -300,7 +257,6 @@ impl ShellConfig {
                 std::env::set_var("LANG", v);
             }
 
-            // PATH: prepend entries baru
             if !self.env.path_extra.is_empty() {
                 let current = std::env::var("PATH").unwrap_or_default();
                 let new_entries: Vec<String> = self
@@ -313,10 +269,7 @@ impl ShellConfig {
                 std::env::set_var("PATH", &combined);
             }
 
-            // Extra env vars (semua scalar TOML: string, int, float, bool)
-            // EnvVal::None = table/array, dilewati
             for (k, v) in &self.env.extra {
-                // Hindari override PATH/EDITOR/VISUAL/LANG yang sudah ditangani
                 match k.as_str() {
                     "EDITOR" | "VISUAL" | "LANG" | "PATH" => {}
                     _ => {
@@ -329,21 +282,17 @@ impl ShellConfig {
         }
     }
 
-    /// Resolve alias: jika `cmd` cocok dengan alias, kembalikan string gantinya.
-    /// Caller harus re-tokenize string alias tersebut.
     pub fn resolve_alias<'a>(&'a self, cmd: &str) -> Option<&'a str> {
         self.aliases.get(cmd).map(|s| s.as_str())
     }
 
-    /// Resolve dir_alias: jika path dimulai dengan ~<name>, expand ke target.
-    /// Contoh: ~crush/src → ~/Templates/TUI/crush/src
     pub fn resolve_dir_alias(&self, path: &str) -> String {
         if path.starts_with('~') {
-            let rest = &path[1..]; // hapus ~
+            let rest = &path[1..];
             for (alias, target) in &self.dir_aliases {
                 if rest == alias || rest.starts_with(&format!("{}/", alias)) {
                     let expanded_target = expand_tilde(target);
-                    let suffix = &rest[alias.len()..]; // "" atau "/..."
+                    let suffix = &rest[alias.len()..];
                     return format!("{}{}", expanded_target, suffix);
                 }
             }
@@ -351,14 +300,12 @@ impl ShellConfig {
         path.to_string()
     }
 
-    /// Kembalikan path absolut untuk dir_alias tertentu, atau None.
     pub fn dir_alias_path(&self, name: &str) -> Option<PathBuf> {
         self.dir_aliases
             .get(name)
             .map(|p| PathBuf::from(expand_tilde(p)))
     }
 
-    /// Kembalikan daftar semua alias untuk ditampilkan / completion.
     pub fn alias_names(&self) -> Vec<&str> {
         self.aliases.keys().map(|k| k.as_str()).collect()
     }
@@ -382,15 +329,13 @@ pub fn expand_tilde(path: &str) -> String {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Build rustyline Config dari ShellConfig.history
+// Build rustyline Config
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Buat rustyline::Config menggunakan nilai dari [history] section.
-/// Dipanggil dari main.rs menggantikan history::build_rl_config().
 pub fn build_rl_config(cfg: &ShellConfig) -> rustyline::Config {
     let h = &cfg.history;
 
-    let max = h.max_entries.min(65535) as usize; // rustyline max ~65535
+    let max = h.max_entries.min(65535) as usize;
 
     rustyline::Config::builder()
         .max_history_size(max)

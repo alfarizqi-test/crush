@@ -28,18 +28,18 @@ impl ShellInfo {
     pub fn register_to_system() {
         let exe_path = env::current_exe().unwrap_or_default().to_string_lossy().to_string();
         
-        // Deteksi Termux
+        // Detect Termux
         let prefix = env::var("PREFIX").unwrap_or_default();
         let etc_shells = if prefix.is_empty() {
-            String::from("/etc/shells") // Linux Standar
+            String::from("/etc/shells") // Standard Linux
         } else {
-            format!("{}/etc/shells", prefix) // Termux Android
+            format!("{}/etc/shells", prefix) // Android Termux
         };
 
         let content = std::fs::read_to_string(&etc_shells).unwrap_or_default();
 
         if !content.contains(&exe_path) {
-            println!("Untuk membuat sistem sepenuhnya mengenali {}, tambahkan baris berikut:", exe_path);
+            println!("To make the system fully recognize {}, add the following line:", exe_path);
             
             if prefix.is_empty() {
                 println!("sudo sh -c 'echo \"{}\" >> {}'", exe_path, etc_shells);
@@ -47,7 +47,7 @@ impl ShellInfo {
                 println!("echo \"{}\" >> {}", exe_path, etc_shells);
             }
         } else {
-            println!("Shell sudah terdaftar di {}!", etc_shells);
+            println!("Shell is already registered in {}!", etc_shells);
         }
     }
 }

@@ -1,10 +1,4 @@
-// state.rs — Shared application state (config + runtime)
-//
-// ShellConfig dimuat sekali di main() dan diteruskan via AppState
-// ke executor, completion, dan highlighter.
-//
-// Menggunakan Arc<RwLock<>> agar bisa dibagikan lintas thread (job reaper),
-// tapi dalam REPL single-thread cukup clone atau borrow langsung.
+// state.rs - Shared application state (config + runtime)
 
 use std::sync::{Arc, RwLock};
 use crate::config::ShellConfig;
@@ -20,12 +14,10 @@ impl AppState {
         Self { inner: Arc::new(RwLock::new(cfg)) }
     }
 
-    /// Baca config (non-blocking read)
     pub fn config(&self) -> std::sync::RwLockReadGuard<'_, ShellConfig> {
         self.inner.read().unwrap()
     }
 
-    /// Ganti config (misal: `config reload`)
     #[allow(dead_code)]
     pub fn reload(&self, cfg: ShellConfig) {
         *self.inner.write().unwrap() = cfg;
