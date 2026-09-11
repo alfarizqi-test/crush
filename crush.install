@@ -1,0 +1,14 @@
+post_install() {
+    if ! grep -q "^/usr/bin/crush$" etc/shells; then
+        echo "Adding /usr/bin/crush to /etc/shells..."
+        echo "/usr/bin/crush" >> etc/shells
+    fi
+}
+
+post_upgrade() {
+    post_install
+}
+
+post_remove() {
+    sed -i '\|^/usr/bin/crush$|d' etc/shells
+}
