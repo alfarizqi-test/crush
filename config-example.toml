@@ -36,7 +36,7 @@ q = "exit"
 
 [bindings]
 # Available actions for key bindings:
-# - "clear_screen"   : Clears the terminal screen
+# - "clear_screen"   : Clears the terminal screen + scrollback (same as 'clear')
 # - "search_history" : Opens reverse history search
 # - "exit_shell"     : Exits crush shell
 # - "accept_line"    : Equivalent to pressing Enter
@@ -44,13 +44,15 @@ q = "exit"
 # - "move_end"       : Move cursor to the end of the line
 # - "complete_hint"  : Accept inline autocomplete hint
 # - "complete_list"  : Show completion suggestions list
-# - "execute: <cmd>" : Immediately inject and run a command
+# - "reload_config"  : Reload config file without restarting shell
+# - "rehash"         : Refresh PATH command cache
+# - "execute: <cmd>" : Immediately run a command (auto-Enter, no input needed)
 
 "Ctrl+L" = "clear_screen"
 "Ctrl+R" = "search_history"
 "Ctrl+D" = "exit_shell"
 
-# execute command y for yazi wrapper
+# execute: y — langsung jalankan yazi wrapper saat Ctrl+T ditekan
 "Ctrl+T" = "execute: y"
 
 [completion]

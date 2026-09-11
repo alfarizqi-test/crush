@@ -76,11 +76,16 @@ fn main() {
     rl.bind_sequence(KeyEvent(Char('p'), Modifiers::CTRL),   Cmd::PreviousHistory);
     rl.bind_sequence(KeyEvent(Char('n'), Modifiers::CTRL),   Cmd::NextHistory);
 
+    // Shared channel untuk "execute: <cmd>" binding.
+    // Handler menyimpan perintah di sini lalu trigger AcceptLine,
+    // main loop membacanya sebelum memproses buffer readline.
+    let pending_inject: Arc<std::sync::Mutex<Option<String>>> =
+        Arc::new(std::sync::Mutex::new(None));
+
     // Config-driven bindings dari [bindings]
-    // Action "clear_screen", "search_history" dipetakan ke rustyline Cmd
     {
         let c = cfg_arc.read().unwrap();
-        apply_config_bindings(&mut rl, &c);
+        apply_config_bindings(&mut rl, &c, Arc::clone(&pending_inject));
     }
 
     // ── History & Job table ───────────────────────────────────────────────────
@@ -151,8 +156,14 @@ fn main() {
         let readline = rl.readline(&prompt);
 
         match readline {
-            Ok(raw) => {
-                let input = raw.trim().to_string();
+        Ok(raw) => {
+                // Cek apakah ada pending inject dari binding "execute: <cmd>",
+                // "reload_config", atau "rehash". Jika ada, gunakan itu sebagai
+                // input; buffer readline (raw) diabaikan.
+                let input = {
+                    let mut p = pending_inject.lock().unwrap();
+                    p.take().unwrap_or_else(|| raw.trim().to_string())
+                };
                 if input.is_empty() { continue; }
 
                 rl.add_history_entry(&input).ok();
@@ -223,81 +234,125 @@ impl ConditionalEventHandler for ExitShellHandler {
     }
 }
 
-/// State Injection via Rustyline Buffer (Pengganti TIOCSTI)
+/// State Injection via Rustyline Buffer
 ///
-/// KEAMANAN & KOMPATIBILITAS:
-/// Implementasi lama menggunakan `libc::ioctl(TIOCSTI)` yang telah DIBLOKIR
-/// secara permanen sejak Linux kernel 6.2 (CVE-2023-XXXX).
-///
-/// Solusi baru: Manfaatkan `Cmd::Insert` bawaan rustyline untuk menyuntikkan
-/// teks langsung ke dalam input buffer di level aplikasi, lalu ikuti dengan
-/// `Cmd::AcceptLine` untuk menjalankan perintah tersebut.
-/// Tidak ada syscall kernel, tidak ada unsafe, tidak ada kernel dependency.
-struct InjectAndExecute(String);
+/// Menyimpan `cmd` ke shared `pending` lalu mengembalikan `Cmd::AcceptLine`
+/// agar rustyline segera keluar dari raw mode. Main loop kemudian membaca
+/// pending dan mengeksekusi perintah seolah user mengetiknya sendiri.
+/// Lebih reliabel daripada Cmd::Insert + \n karena tidak bergantung pada
+/// bagaimana rustyline menginterpretasi karakter newline dalam buffer.
+struct InjectAndExecute {
+    cmd:     String,
+    pending: Arc<std::sync::Mutex<Option<String>>>,
+}
 impl ConditionalEventHandler for InjectAndExecute {
-    fn handle(&self, _evt: &Event, _n: RepeatCount, _pos: bool, ctx: &EventContext) -> Option<Cmd> {
-        // Hanya inject jika buffer saat ini kosong untuk menghindari
-        // mengganggu teks yang sedang diketik pengguna.
-        if ctx.line().is_empty() {
-            // Strategi: masukkan teks ke buffer, lalu terima baris.
-            // Rustyline akan memproses Cmd::Insert, lalu kita kembalikan
-            // AcceptLine pada iterasi event berikutnya melalui chaining.
-            //
-            // Karena ConditionalEventHandler hanya bisa mengembalikan SATU Cmd,
-            // kita gunakan Cmd::Insert dengan string + newline agar rustyline
-            // memprosesnya sebagai satu kesatuan.
-            //
-            // Alternatif yang lebih bersih: gunakan Cmd::Insert untuk isi perintah,
-            // dan biarkan pengguna menekan Enter (non-destructive inject).
-            // Ini adalah pendekatan yang paling aman dan tidak akan crash.
-            Some(Cmd::Insert(1, self.0.clone()))
-        } else {
-            // Buffer tidak kosong: tempelkan di akhir baris yang ada.
-            Some(Cmd::Insert(1, self.0.clone()))
-        }
+    fn handle(&self, _evt: &Event, _n: RepeatCount, _pos: bool, _ctx: &EventContext) -> Option<Cmd> {
+        // Simpan perintah di shared slot; main loop akan membacanya.
+        *self.pending.lock().unwrap() = Some(self.cmd.clone());
+        // AcceptLine menyebabkan rl.readline() segera return —
+        // buffer saat ini diabaikan di main loop karena pending sudah terisi.
+        Some(Cmd::AcceptLine)
     }
 }
 
+/// Clear screen handler: identik dengan builtin `clear`.
+/// Print escape sequence \x1b[2J\x1b[3J\x1b[1;1H untuk membersihkan seluruh
+/// layar termasuk scrollback buffer, lalu Cmd::ClearScreen agar rustyline
+/// redraw prompt di posisi yang benar.
+struct ClearScreenHandler;
+impl ConditionalEventHandler for ClearScreenHandler {
+    fn handle(&self, _evt: &Event, _n: RepeatCount, _pos: bool, _ctx: &EventContext) -> Option<Cmd> {
+        use std::io::Write;
+        print!("\x1b[2J\x1b[3J\x1b[1;1H");
+        std::io::stdout().flush().ok();
+        Some(Cmd::ClearScreen)  // rustyline redraw prompt
+    }
+}
 
 /// Terapkan [bindings] dari config ke rustyline editor.
 /// Format key: "Ctrl+L", "Ctrl+R", "Alt+X", "Ctrl+F"
-/// Format action: "clear_screen", "search_history", "exit_shell",
-///                "execute: <cmd>" (jalankan perintah langsung)
+/// Format action:
+///   "clear_screen"   — bersihkan layar + scrollback (setara builtin `clear`)
+///   "search_history" — reverse history search
+///   "exit_shell"     — EOF jika buffer kosong, else delete char
+///   "accept_line"    — setara tekan Enter
+///   "move_home"      — pindah ke awal baris
+///   "move_end"       — pindah ke akhir baris
+///   "complete_hint"  — terima inline hint
+///   "complete_list"  — tampilkan daftar completion
+///   "reload_config"  — reload config tanpa restart shell
+///   "rehash"         — refresh PATH cache
+///   "execute: <cmd>" — jalankan perintah langsung (auto-Enter)
 fn apply_config_bindings(
-    rl: &mut Editor<CrushCompleter, FileHistory>,
-    cfg: &ShellConfig,
+    rl:      &mut Editor<CrushCompleter, FileHistory>,
+    cfg:     &ShellConfig,
+    pending: Arc<std::sync::Mutex<Option<String>>>,
 ) {
     for (key_str, action) in &cfg.bindings {
         let Some(key_event) = parse_key_str(key_str) else { continue; };
 
+        // "execute: <cmd>" — inject ke pending + AcceptLine → auto-eksekusi
         if action.starts_with("execute:") {
             let cmd_str = action["execute:".len()..].trim().to_string();
             rl.bind_sequence(
                 key_event,
-                EventHandler::Conditional(Box::new(InjectAndExecute(cmd_str)))
+                EventHandler::Conditional(Box::new(InjectAndExecute {
+                    cmd:     cmd_str,
+                    pending: Arc::clone(&pending),
+                }))
             );
             continue;
         }
 
-        let cmd = match action.as_str() {
-            "clear_screen"   => Cmd::ClearScreen,
-            "search_history" => Cmd::ReverseSearchHistory,
-            "exit_shell"     => {
-                rl.bind_sequence(key_event, EventHandler::Conditional(Box::new(ExitShellHandler)));
-                continue;
+        match action.as_str() {
+            "clear_screen" => {
+                rl.bind_sequence(key_event, EventHandler::Conditional(Box::new(ClearScreenHandler)));
             }
-            "accept_line"    => Cmd::AcceptLine,
-            "move_home"      => Cmd::Move(rustyline::Movement::BeginningOfLine),
-            "move_end"       => Cmd::Move(rustyline::Movement::EndOfLine),
-            "complete_hint"  => Cmd::CompleteHint,
-            "complete_list"  => Cmd::Complete,
+            "search_history" => {
+                rl.bind_sequence(key_event, Cmd::ReverseSearchHistory);
+            }
+            "exit_shell" => {
+                rl.bind_sequence(key_event, EventHandler::Conditional(Box::new(ExitShellHandler)));
+            }
+            "accept_line" => {
+                rl.bind_sequence(key_event, Cmd::AcceptLine);
+            }
+            "move_home" => {
+                rl.bind_sequence(key_event, Cmd::Move(rustyline::Movement::BeginningOfLine));
+            }
+            "move_end" => {
+                rl.bind_sequence(key_event, Cmd::Move(rustyline::Movement::EndOfLine));
+            }
+            "complete_hint" => {
+                rl.bind_sequence(key_event, Cmd::CompleteHint);
+            }
+            "complete_list" => {
+                rl.bind_sequence(key_event, Cmd::Complete);
+            }
+            // reload_config & rehash — via pending agar output tampil bersih
+            // setelah rustyline keluar dari raw mode (tidak ada glitch tampilan)
+            "reload_config" => {
+                rl.bind_sequence(
+                    key_event,
+                    EventHandler::Conditional(Box::new(InjectAndExecute {
+                        cmd:     "reload".into(),
+                        pending: Arc::clone(&pending),
+                    }))
+                );
+            }
+            "rehash" => {
+                rl.bind_sequence(
+                    key_event,
+                    EventHandler::Conditional(Box::new(InjectAndExecute {
+                        cmd:     "rehash".into(),
+                        pending: Arc::clone(&pending),
+                    }))
+                );
+            }
             _ => {
                 eprintln!("crush: unknown binding action: {:?}", action);
-                continue;
             }
-        };
-
-        rl.bind_sequence(key_event, cmd);
+        }
     }
 }
 
