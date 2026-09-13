@@ -1,12 +1,7 @@
-mod shell;
-mod history;
-mod completion;
-mod help;
-mod jobs;
-mod executor;
-mod ls;
+mod builtins;
+mod core;
+mod ui;
 mod config;
-mod state;
 
 use std::env;
 use std::sync::{Arc, RwLock};
@@ -16,10 +11,10 @@ use rustyline::history::FileHistory;
 use rustyline::KeyCode::*;
 use rustyline::{Cmd, Editor, KeyEvent, Modifiers, EventHandler, ConditionalEventHandler, Event, EventContext, RepeatCount};
 
-use completion::CrushCompleter;
+use ui::completion::CrushCompleter;
 use config::ShellConfig;
-use executor::{parse_input, tokenize_operators, ExecContext, ShellEnv};
-use jobs::new_job_table;
+use core::executor::{parse_input, tokenize_operators, ExecContext, ShellEnv};
+use builtins::jobs::new_job_table;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main
@@ -30,11 +25,11 @@ fn main() {
         libc::signal(libc::SIGINT, libc::SIG_IGN);
     }
 
-    shell::ShellInfo::init_environment();
+    core::shell::ShellInfo::init_environment();
 
     if let Some(arg) = std::env::args().nth(1) {
         if arg == "--check" {
-            shell::ShellInfo::register_to_system();
+            core::shell::ShellInfo::register_to_system();
             return;
         }
     }
@@ -48,7 +43,7 @@ fn main() {
     // ── Editor rustyline ──────────────────────────────────────────────────────
     let rl_config = {
         let c = cfg_arc.read().unwrap();
-        config::shell::build_rl_config(&c)
+        config::types::build_rl_config(&c)
     };
     let helper   = CrushCompleter::new(Arc::clone(&cfg_arc));
     let mut rl: Editor<CrushCompleter, FileHistory> =
@@ -72,7 +67,7 @@ fn main() {
     }
 
     // ── History & Job table ───────────────────────────────────────────────────
-    history::load_history(&mut rl);
+    ui::history::load_history(&mut rl);
     let job_table = new_job_table();
 
     // ── Greeting ──────────────────────────────────────────────────────────────
@@ -107,7 +102,7 @@ fn main() {
                 cfg_arc:   &cfg_arc,
                 shell_env: ShellEnv::new(),
             };
-            executor::execute_line(&mut ctx, units);
+            core::executor::execute_line(&mut ctx, units);
         }
     }
 
@@ -127,12 +122,12 @@ fn main() {
 
         let prompt = {
             let cfg = cfg_arc.read().unwrap();
-            let prompt_ctx = config::prompt::PromptContext {
+            let prompt_ctx = ui::prompt::PromptContext {
                 last_exit_code,
                 cmd_duration_ms: last_duration_ms,
                 is_ssh,
             };
-            config::prompt::render_prompt(&cfg.prompt, &prompt_ctx)
+            ui::prompt::render_prompt(&cfg.prompt, &prompt_ctx)
         };
         
         let readline = rl.readline(&prompt);
@@ -170,7 +165,7 @@ fn main() {
                     shell_env: ShellEnv::new(),
                 };
                 let start_time = std::time::Instant::now();
-                last_exit_code = executor::execute_line(&mut ctx, units);
+                last_exit_code = core::executor::execute_line(&mut ctx, units);
                 last_duration_ms = start_time.elapsed().as_millis() as u64;
             }
 
@@ -193,7 +188,7 @@ fn main() {
         }
     }
 
-    history::save_history(&mut rl);
+    ui::history::save_history(&mut rl);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

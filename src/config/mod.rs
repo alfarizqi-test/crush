@@ -1,13 +1,13 @@
-// config/mod.rs - Config module entry point
+// config/mod.rs — Config module entry point
 
 #[allow(dead_code)]
-pub mod shell;
+pub mod types;
 #[allow(dead_code)]
 pub mod wrapper;
 #[allow(dead_code)]
 pub mod prompt;
 
-pub use shell::ShellConfig;
+pub use types::ShellConfig;
 
 use std::path::PathBuf;
 use directories::ProjectDirs;

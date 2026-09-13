@@ -80,7 +80,7 @@ impl WrapperConfig {
 pub fn execute_wrapper(
     func:  &WrapperFunction,
     args:  &[&str],
-    ctx:   &mut crate::executor::ExecContext<'_>,
+    ctx:   &mut crate::core::executor::ExecContext<'_>,
 ) -> i32 {
     let mut locals: HashMap<String, String> = HashMap::new();
 
@@ -99,7 +99,7 @@ fn run_block(
     body:   &str,
     locals: &mut HashMap<String, String>,
     args:   &[&str],
-    ctx:    &mut crate::executor::ExecContext<'_>,
+    ctx:    &mut crate::core::executor::ExecContext<'_>,
 ) -> i32 {
     let lines: Vec<&str> = body.lines().collect();
     let mut pc = 0usize;
@@ -341,7 +341,7 @@ fn strip_quotes(s: &str) -> &str {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Jalankan satu baris perintah di dalam executor context.
-fn run_line(line: &str, ctx: &mut crate::executor::ExecContext<'_>) -> i32 {
+fn run_line(line: &str, ctx: &mut crate::core::executor::ExecContext<'_>) -> i32 {
     let line = line.trim();
     if line.is_empty() || line.starts_with('#') { return 0; }
 
@@ -354,11 +354,11 @@ fn run_line(line: &str, ctx: &mut crate::executor::ExecContext<'_>) -> i32 {
     };
     if tokens_raw.is_empty() { return 0; }
 
-    let tokens_owned = crate::executor::tokenize_operators(tokens_raw);
+    let tokens_owned = crate::core::executor::tokenize_operators(tokens_raw);
     let tokens: Vec<&str> = tokens_owned.iter().map(|s| s.as_str()).collect();
-    let units = crate::executor::parse_input(&tokens);
+    let units = crate::core::executor::parse_input(&tokens);
     if units.is_empty() { return 0; }
 
-    crate::executor::execute_line(ctx, units);
+    crate::core::executor::execute_line(ctx, units);
     0  // execute_line tidak return exit code langsung; bisa diperbaiki nanti
 }

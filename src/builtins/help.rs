@@ -1,7 +1,7 @@
 // help.rs - Shell help and documentation
 
 use std::io::{self, Write};
-use crate::history::history_path;
+use crate::ui::history::history_path;
 use crate::config::ShellConfig;
 
 // ─────────────────────────────────────────────────────────────────────────────

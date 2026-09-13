@@ -17,7 +17,7 @@ use std::process::{Child, Command, Stdio};
 use std::os::unix::process::CommandExt;
 use which::which;
 
-use crate::jobs::SharedJobTable;
+use crate::builtins::jobs::SharedJobTable;
 use crate::config::ShellConfig;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -258,7 +258,7 @@ impl ShellEnv {
 pub struct ExecContext<'a> {
     pub jobs:      &'a SharedJobTable,
     pub rl:        &'a mut rustyline::Editor<
-                       crate::completion::CrushCompleter,
+                       crate::ui::completion::CrushCompleter,
                        rustyline::history::FileHistory,
                    >,
     pub raw_input: &'a str,
@@ -405,12 +405,12 @@ fn execute_segment(
     // ── Builtin dispatch ─────────────────────────────────────────────────────
     match cmd {
         "exit" => {
-            crate::history::save_history(ctx.rl);
+            crate::ui::history::save_history(ctx.rl);
             println!("exiting crush. goodbye!");
             std::process::exit(0);
         }
         "help" => {
-            crate::help::print_help(rest.first().copied(), ctx.config);
+            crate::builtins::help::print_help(rest.first().copied(), ctx.config);
             return 0;
         }
         "history" => {
@@ -530,7 +530,7 @@ fn execute_segment(
             return 0;
         }
         "ls" => {
-            return crate::ls::run(&rest);
+            return crate::builtins::ls::run(&rest);
         }
         "rehash" => {
             if let Ok(path) = env::var("PATH") {

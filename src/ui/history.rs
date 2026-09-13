@@ -30,7 +30,7 @@ pub fn build_rl_config() -> rustyline::Config {
         .build()
 }
 
-pub fn load_history(rl: &mut rustyline::Editor<crate::completion::CrushCompleter, FileHistory>) {
+pub fn load_history(rl: &mut rustyline::Editor<crate::ui::completion::CrushCompleter, FileHistory>) {
     let path = history_path();
     if path.exists() {
         if let Err(e) = rl.load_history(&path) {
@@ -39,7 +39,7 @@ pub fn load_history(rl: &mut rustyline::Editor<crate::completion::CrushCompleter
     }
 }
 
-pub fn save_history(rl: &mut rustyline::Editor<crate::completion::CrushCompleter, FileHistory>) {
+pub fn save_history(rl: &mut rustyline::Editor<crate::ui::completion::CrushCompleter, FileHistory>) {
     let path = history_path();
     if let Err(e) = rl.save_history(&path) {
         eprintln!("crush: failed to save history: {}", e);
