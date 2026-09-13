@@ -1,17 +1,17 @@
-// jobs.rs — Background job management untuk crush shell
+// jobs.rs - Background job management
 //
-// Fitur:
+// Features:
 //   - Spawn background jobs (cmd &)
-//   - jobs builtin (tampilkan semua / spesifik)
-//   - Reap (bersihkan zombie) sebelum prompt ditampilkan
-//   - Recycle job numbers — ID bekas dipakai ulang
+//   - jobs builtin
+//   - Zombie reaping
+//   - Job ID recycling
 
 use std::collections::BTreeMap;
 use std::process::{Child, ExitStatus};
 use std::sync::{Arc, Mutex};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tipe data
+// Types
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -41,11 +41,11 @@ impl std::fmt::Debug for Job {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// JobTable — daftar global background jobs
+// JobTable - Global background jobs list
 // ─────────────────────────────────────────────────────────────────────────────
 
 pub struct JobTable {
-    // BTreeMap agar ID selalu terurut; kunci = job ID (1-based)
+    // BTreeMap for ordered IDs; key = job ID (1-based)
     jobs: BTreeMap<usize, Job>,
 }
 
@@ -54,7 +54,7 @@ impl JobTable {
         Self { jobs: BTreeMap::new() }
     }
 
-    /// Tambahkan job baru; kembalikan job ID yang diberikan.
+    /// Add a new job; returns the assigned job ID.
     pub fn add(&mut self, child: Child, command: &str) -> usize {
         let id  = self.next_id();
         let pid = child.id();
@@ -69,9 +69,9 @@ impl JobTable {
         id
     }
 
-    /// Ambil job ID berikutnya — recycle ID yang sudah Done/Killed.
+    /// Get next job ID - recycles Done/Killed IDs.
     fn next_id(&self) -> usize {
-        // Cari lubang di urutan yang ada
+        // Find a hole in the sequence
         for i in 1.. {
             if !self.jobs.contains_key(&i) {
                 return i;
@@ -80,8 +80,8 @@ impl JobTable {
         unreachable!()
     }
 
-    /// Reap semua job yang sudah selesai; cetak notifikasi "[N]+ Done cmd".
-    /// Dipanggil tepat sebelum mencetak prompt.
+    /// Reap finished jobs; prints notification "[N]+ Done cmd".
+    /// Called right before printing the prompt.
     pub fn reap_done(&mut self) {
         let mut done_ids: Vec<usize> = Vec::new();
 
@@ -90,13 +90,13 @@ impl JobTable {
                 continue;
             }
             if let Some(ref mut child) = job.child {
-                // try_wait: non-blocking — tidak blokir prompt
+                // try_wait: non-blocking
                 match child.try_wait() {
                     Ok(Some(status)) => {
                         job.status = exit_status_to_job_status(status);
                         done_ids.push(id);
                     }
-                    Ok(None) => { /* masih berjalan */ }
+                    Ok(None) => { /* still running */ }
                     Err(_)   => {
                         job.status = JobStatus::Killed;
                         done_ids.push(id);
@@ -105,7 +105,7 @@ impl JobTable {
             }
         }
 
-        // Cetak notifikasi dan hapus dari tabel
+        // Print notification and remove from table
         for id in done_ids {
             if let Some(job) = self.jobs.remove(&id) {
                 let status_str = match job.status {
@@ -119,9 +119,9 @@ impl JobTable {
         }
     }
 
-    /// Tampilkan semua job yang masih Running.
+    /// Show all Running jobs.
     pub fn print_all(&mut self) {
-        self.reap_done(); // pastikan status terkini
+        self.reap_done(); // ensure status is current
 
         if self.jobs.is_empty() {
             println!("No background jobs.");
@@ -137,7 +137,7 @@ impl JobTable {
         }
     }
 
-    /// Tampilkan job spesifik berdasarkan ID (%N).
+    /// Show specific job by ID (%N).
     pub fn print_job(&mut self, spec: &str) {
         let id = parse_job_spec(spec);
         match id {
@@ -167,7 +167,7 @@ impl JobTable {
 // Helper
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Parse job spec: "%1" atau "1" → Some(1)
+/// Parse job spec: "%1" or "1" -> Some(1)
 fn parse_job_spec(spec: &str) -> Option<usize> {
     spec.trim_start_matches('%').parse::<usize>().ok()
 }
@@ -175,7 +175,7 @@ fn parse_job_spec(spec: &str) -> Option<usize> {
 fn exit_status_to_job_status(status: ExitStatus) -> JobStatus {
     match status.code() {
         Some(c) => JobStatus::Done(c),
-        None    => JobStatus::Killed, // sinyal
+        None    => JobStatus::Killed, // signal
     }
 }
 

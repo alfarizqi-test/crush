@@ -1,4 +1,4 @@
-// ui/renderer.rs — Format engine dan module renderers untuk prompt
+// ui/renderer.rs - Format engine and module renderers for prompt
 
 use std::collections::HashMap;
 use std::env;

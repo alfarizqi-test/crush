@@ -1,12 +1,12 @@
-// executor.rs — Command execution engine untuk crush shell
+// executor.rs - Command execution engine for crush shell
 //
-// Mendukung:
+// Features:
 //   - Redirection: >, >>, 2>, 2>>
 //   - Background jobs: cmd &
 //   - Pipeline: cmd1 | cmd2 | cmd3
 //   - Logical AND: cmd1 && cmd2
 //   - Logical OR:  cmd1 || cmd2
-//   - Kombinasi: cmd1 && cmd2 | cmd3 || cmd4
+//   - Combinations: cmd1 && cmd2 | cmd3 || cmd4
 
 use std::collections::HashMap;
 use std::env;
@@ -48,7 +48,7 @@ pub enum Op {
 #[derive(Debug)]
 pub struct Unit {
     pub segment: Segment,
-    pub op:      Option<Op>,  // None = unit terakhir
+    pub op:      Option<Op>,  // None = last unit
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

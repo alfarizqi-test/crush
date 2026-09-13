@@ -1,14 +1,14 @@
-// ls.rs — Builtin ls dengan icon Nerd Font (gaya eza)
+// ls.rs - Builtin ls with Nerd Font icons (eza style)
 //
 // Flags:
 //   -l   long format (permissions, size, date, owner)
-//   -a   tampilkan file tersembunyi (dotfiles)
+//   -a   show hidden files (dotfiles)
 //   -h   human-readable size
-//   -1   satu entri per baris
+//   -1   one entry per line
 //   -r   reverse sort
 //   -t   sort by modification time
-//   -d   list directory itself, bukan isinya
-//   --icons / --no-icons   paksa on/off icon
+//   -d   list directory itself, not its contents
+//   --icons / --no-icons   force icons on/off
 
 use std::fs::{self, Metadata};
 use std::io::{self, Write};
@@ -23,24 +23,24 @@ use std::time::SystemTime;
 const RST:    &str = "\x1b[0m";
 const BOLD:   &str = "\x1b[1m";
 const DIM:    &str = "\x1b[2m";
-const BLUE:   &str = "\x1b[1;34m";   // direktori
+const BLUE:   &str = "\x1b[1;34m";   // directory
 const CYAN:   &str = "\x1b[1;36m";   // symlink
 const GREEN:  &str = "\x1b[1;32m";   // executable
 const YELLOW: &str = "\x1b[0;33m";   // device / special
 const RED:    &str = "\x1b[1;31m";   // broken symlink / permission denied
-const WHITE:  &str = "\x1b[0;37m";   // file biasa
+const WHITE:  &str = "\x1b[0;37m";   // regular file
 const MAGENTA:&str = "\x1b[0;35m";   // archive/compressed
 const LBLUE:  &str = "\x1b[0;34m";   // media
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Icon map — Nerd Font v3 (codepoints U+E000–U+F8FF, BMP Private Use Area)
+// Icon map - Nerd Font v3 (codepoints U+E000-U+F8FF, BMP Private Use Area)
 //
-// Referensi: https://www.nerdfonts.com/cheat-sheet
-//   nf-dev-*    E600–E6FF   (DevIcons)
-//   nf-fa-*     E000–E0FF, F000–F2FF  (Font Awesome)
-//   nf-seti-*   E5FA–E62A  (Seti-UI)
-//   nf-cod-*    EA60–EBEB  (Codicons)
-//   nf-md-*     F0000+     (Material — TIDAK dipakai, di luar BMP)
+// Reference: https://www.nerdfonts.com/cheat-sheet
+//   nf-dev-*    E600-E6FF   (DevIcons)
+//   nf-fa-*     E000-E0FF, F000-F2FF  (Font Awesome)
+//   nf-seti-*   E5FA-E62A  (Seti-UI)
+//   nf-cod-*    EA60-EBEB  (Codicons)
+//   nf-md-*     F0000+     (Material - NOT used, outside BMP)
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn icon_for(name: &str, meta: &Metadata, is_link: bool) -> &'static str {
@@ -165,11 +165,11 @@ fn dir_icon(name: &str) -> &'static str {
 }
 
 fn file_icon_fallback(name: &str, meta: &Metadata) -> &'static str {
-    // Executable tanpa ekstensi
+    // Executable without extension
     if meta.permissions().mode() & 0o111 != 0 && !meta.is_dir() {
         return "\u{f489} "; // nf-fa-terminal
     }
-    // Nama file khusus
+    // Special filenames
     match name {
         "Makefile" | "makefile" | "GNUmakefile" => "\u{f013} ", // nf-fa-cog
         "Dockerfile" | "Containerfile"          => "\u{e650} ", // nf-dev-docker
@@ -198,7 +198,7 @@ fn color_for(meta: &Metadata, is_link: bool, link_ok: bool) -> &'static str {
     let mode = meta.permissions().mode();
     if mode & 0o111 != 0    { return GREEN; }
 
-    // Deteksi berdasarkan file type bits
+    // Detect based on file type bits
     let ftype = mode & 0o170000;
     if ftype == 0o060000 || ftype == 0o020000 { return YELLOW; } // block/char dev
 
@@ -376,14 +376,14 @@ fn read_entries(dir: &Path, opt: &LsOptions) -> Vec<Entry> {
         let path = item.path();
         let is_link = item.file_type().map(|t| t.is_symlink()).unwrap_or(false);
 
-        // Metadata: bukan follow symlink untuk permissions; follow untuk size dir
+        // Metadata: don't follow symlink for permissions; follow for dir size
         let meta = match fs::symlink_metadata(&path) {
             Ok(m) => m,
             Err(_) => continue,
         };
 
         let link_meta = if is_link {
-            fs::metadata(&path).ok() // follow link untuk warna/ikon target
+            fs::metadata(&path).ok() // follow link for target color/icon
         } else {
             None
         };
@@ -396,9 +396,9 @@ fn read_entries(dir: &Path, opt: &LsOptions) -> Vec<Entry> {
         let ord = if opt.sort_time {
             let ta = a.meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
             let tb = b.meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
-            tb.cmp(&ta) // lebih baru dulu
+            tb.cmp(&ta) // newer first
         } else {
-            // Direktori dulu, lalu alfa case-insensitive
+            // Directories first, then alpha case-insensitive
             let da = a.meta.is_dir();
             let db = b.meta.is_dir();
             db.cmp(&da).then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
@@ -421,7 +421,7 @@ fn entry_color(e: &Entry) -> &'static str {
 }
 
 fn print_long(entries: &[Entry], opt: &LsOptions) {
-    // Hitung total blocks (du-style)
+    // Calculate total blocks (du-style)
     let total_blocks: u64 = entries.iter().map(|e| e.meta.blocks()).sum();
     println!("total {}", total_blocks / 2); // 512-byte → 1K blocks
 
@@ -458,10 +458,10 @@ fn print_long(entries: &[Entry], opt: &LsOptions) {
 }
 
 fn print_grid(entries: &[Entry], opt: &LsOptions) {
-    // Hitung lebar terminal (fallback 80)
+    // Calculate terminal width (fallback 80)
     let term_w = term_width();
 
-    // Buat string tampilan per entry
+    // Build display string per entry
     let items: Vec<String> = entries.iter().map(|e| {
         let color  = entry_color(e);
         let icon   = if opt.icons { icon_for(&e.name, &e.meta, e.is_link) } else { "" };
@@ -471,7 +471,7 @@ fn print_grid(entries: &[Entry], opt: &LsOptions) {
         format!("{}{}{}{}{}", color, icon, e.name, suffix, RST)
     }).collect();
 
-    // Panjang tampilan (tanpa ANSI) per item
+    // Display length (without ANSI) per item
     let lens: Vec<usize> = entries.iter().map(|e| {
         let icon_w = if opt.icons { 2 } else { 0 }; // icon + spasi = 2 char
         e.name.chars().count() + icon_w
@@ -483,11 +483,11 @@ fn print_grid(entries: &[Entry], opt: &LsOptions) {
         return;
     }
 
-    // Hitung jumlah kolom optimal
+    // Calculate optimal column count
     let col_gap = 2usize;
     let max_cols = (term_w / (lens.iter().max().copied().unwrap_or(1) + col_gap)).max(1);
 
-    // Coba dari max_cols turun sampai muat
+    // Try from max_cols down until it fits
     let cols = (1..=max_cols).rev().find(|&c| {
         let rows = (items.len() + c - 1) / c;
         let col_widths: Vec<usize> = (0..c).map(|ci| {
@@ -520,11 +520,11 @@ fn print_grid(entries: &[Entry], opt: &LsOptions) {
 }
 
 fn term_width() -> usize {
-    // Baca dari env COLUMNS, atau ioctl, fallback 80
+    // Read from COLUMNS env, or ioctl, fallback 80
     if let Ok(cols) = std::env::var("COLUMNS") {
         if let Ok(n) = cols.parse::<usize>() { return n; }
     }
-    // Coba ioctl TIOCGWINSZ
+    // Try ioctl TIOCGWINSZ
     #[cfg(target_os = "linux")]
     {
         let mut ws: libc_winsize = unsafe { std::mem::zeroed() };
@@ -537,7 +537,7 @@ fn term_width() -> usize {
     80
 }
 
-// ── Minimal ioctl binding tanpa libc crate ────────────────────────────────────
+// ── Minimal ioctl binding without libc crate ────────────────────────────────────
 #[cfg(target_os = "linux")]
 #[repr(C)]
 struct libc_winsize { ws_row: u16, ws_col: u16, ws_xpixel: u16, ws_ypixel: u16 }
@@ -559,7 +559,7 @@ pub fn run(args: &[&str]) -> i32 {
     let multi = opt.paths.len() > 1;
 
     for (i, path) in opt.paths.iter().enumerate() {
-        // Cetak header jika multiple path
+        // Print header if multiple paths
         if multi {
             if i > 0 { println!(); }
             println!("{}{}:{}",
@@ -571,7 +571,7 @@ pub fn run(args: &[&str]) -> i32 {
             Err(e) => { eprintln!("ls: {}: {}", path.display(), e); continue; }
         };
 
-        // -d: tampilkan direktori itu sendiri
+        // -d: show directory itself
         if opt.dir_only || !meta.is_dir() {
             let is_link = meta.file_type().is_symlink();
             let link_meta = if is_link { fs::metadata(path).ok() } else { None };
@@ -587,7 +587,7 @@ pub fn run(args: &[&str]) -> i32 {
             continue;
         }
 
-        // Direktori normal
+        // Normal directory
         let entries = read_entries(path, &opt);
         if opt.long {
             print_long(&entries, &opt);

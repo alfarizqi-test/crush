@@ -1,4 +1,4 @@
-// config/types.rs - Tipe data konfigurasi shell (renamed dari shell.rs)
+// config/types.rs - Shell configuration data types (renamed from shell.rs)
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

@@ -1,4 +1,4 @@
-// core/mod.rs — Mesin eksekutor dan memori shell
+// core/mod.rs - Execution engine and shell memory
 
 pub mod executor;
 pub mod state;
