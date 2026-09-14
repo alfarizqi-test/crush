@@ -13,7 +13,7 @@ syntax_highlighting = true
 [startup]
 commands = [
     "clear",
-    "echo 'Welcome to crush shell!'"
+    "echo 'Welcome to Crush, type help to see more info'"
 ]
 
 [env]
@@ -52,7 +52,7 @@ q = "exit"
 "Ctrl+R" = "search_history"
 "Ctrl+D" = "exit_shell"
 
-# execute: y — langsung jalankan yazi wrapper saat Ctrl+T ditekan
+# execute: <command> — auto run command and execute it
 "Ctrl+T" = "execute: y"
 
 [completion]
@@ -108,21 +108,20 @@ rm -f -- "$tmp"
 """
 
 [functions.start_niri]
-description = "Jalankan Niri HANYA jika berada di TTY murni"
+description = "Run Niri on TTY only"
 body = """
 if [ -z "$WAYLAND_DISPLAY" ]
     niri
 else
-    echo "Peringatan: Niri sudah berjalan!"
+    echo "Warning: Niri is already running!"
 end
 """
 
 # ==========================================
-# CRUSH BUILT-IN PROMPT ENGINE (Starship-like)
+# CRUSH BUILT-IN PROMPT ENGINE
 # ==========================================
 
 [prompt]
-# Format utama penyusun prompt
 format = """
 $cmd_duration $directory$git_branch
   $character"""
