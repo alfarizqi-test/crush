@@ -71,10 +71,6 @@ pic = "~/Pictures"
 # Auto after command run
 on_cd = "ls"
 
-# Auto before command run
-pre_command = ""
-on_clear = ""
-
 [history]
 max_entries = 10000
 ignore_space = true
